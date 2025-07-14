@@ -1,0 +1,73 @@
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.1
+  environment:
+    &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${DATABASE_URL}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+    _PIP_ADDITIONAL_REQUIREMENTS: pandas psycopg2-binary pybaseball
+    DATABASE_URL: ${DATABASE_URL}
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./scripts:/opt/airflow/scripts
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+  depends_on:
+    - db
+  networks:
+    - airflow_net
+
+services:
+  db:
+    image: postgres:13
+    container_name: db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: baseball
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - airflow_net
+# PostgreSQL database container for storing Statcast data
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command: -c "airflow db migrate && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
+    depends_on:
+      - db # Ensure database is up before starting Airflow
+
+  airflow-webserver:
+    <<: *airflow-common
+    ports:
+      - "8080:8080"
+    command: webserver
+    # Airflow scheduler and webserver container
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+
+  pipeline-app:
+    build: .
+    container_name: pipeline-app
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - ./scripts:/app/scripts
+    networks:
+      - airflow_net
+
+volumes:
+  postgres_data:
+  # Persistent volume for PostgreSQL data
+
+networks:
+  airflow_net:
+    driver: bridge
