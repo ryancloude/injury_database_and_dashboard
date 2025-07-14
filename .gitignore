@@ -1,5 +1,33 @@
-venv/
+# Python bytecode
 __pycache__/
-*.pyc
-logs/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+env/
+
+# Environment variables
 .env
+
+# logs
+logs/
+
+# Docker volumes
+pgdata/
+*/pgdata/
+
+# PostgreSQL data directories (if inside repo)
+*.db
+*.log
+
+# Airflow local files
+airflow/airflow.db
+airflow/logs/
+airflow/unittests.cfg
+airflow/__pycache__/
+
+# VSCode / editor junk
+.vscode/
+*.swp
+.DS_Store
