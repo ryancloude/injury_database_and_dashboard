@@ -63,7 +63,7 @@ def update_statcast(engine, today, chunk_size, table_name):
     if end_date - start_date > timedelta(days=chunk_size):
         chunks = get_date_chunks(start_date, end_date, chunk_size)
         for start, end in chunks:
-            df = statcast(start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
+            df = statcast(start, end)
             #Drops column if all values ar na
             df = df.dropna(axis=1, how='all')
             # Update table schema if new columns appear
