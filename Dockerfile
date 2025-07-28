@@ -11,4 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./scripts ./scripts
 
 #Keeps the container running for exec access
-CMD ["tail", "-f", "/dev/null"]  #Keeps the container running for exec access
+
+CMD ["tail", "-f", "/dev/null"]  

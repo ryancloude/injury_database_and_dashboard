@@ -6,21 +6,9 @@ import pandas as pd
 from tqdm import tqdm
 import time
 import os
-from urllib.parse import quote_plus
 import warnings
 import io
 import psycopg2
-
-# Load PostgreSQL connection string from environment variable
-DATABASE_URL = os.environ['DATABASE_URL']
-engine = create_engine(DATABASE_URL)
-
-# Define parameters for data extraction
-start_year = 2015
-end_year = datetime.today().year
-chunk_size = 7 # Days per chunk (Statcast has request limits)
-table_name = "statcast"
-
 
 def get_date_chunks(start_date, end_date, chunk_size):
     """
@@ -136,6 +124,15 @@ def create_statcast(start_year, end_year, chunk_size, table_name):
                 time.sleep(2)
 
 if __name__ == "__main__":
+    # Load PostgreSQL connection string from environment variable
+    DATABASE_URL = os.environ['DATABASE_URL']
+    engine = create_engine(DATABASE_URL)
+
+    # Define parameters for data extraction
+    start_year = 2015
+    end_year = datetime.today().year
+    chunk_size = 7 # Days per chunk (Statcast has request limits)
+    table_name = "statcast"
     # Test DB connection before starting extraction
     try:
         with engine.connect() as conn:

@@ -63,6 +63,8 @@ services:
       - ./scripts:/app/scripts
     networks:
       - airflow_net
+    command: tail -f /dev/null
+
 
 volumes:
   postgres_data:

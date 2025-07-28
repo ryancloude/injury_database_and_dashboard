@@ -8,3 +8,4 @@ pybaseball
 ipykernel
 dotenv
 tqdm
+spacy
