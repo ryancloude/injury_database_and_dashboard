@@ -83,7 +83,7 @@ def alter_table(df, existing_columns, table_name, engine):
     df = df[existing_columns]
     return existing_columns, df
 
-def create_statcast(start_year, end_year, chunk_size, table_name):
+def create_statcast(start_year, end_year, chunk_size, table_name, engine):
     """
     Downloads Statcast data from pybaseball and stores it into PostgreSQL.
 
@@ -115,13 +115,14 @@ def create_statcast(start_year, end_year, chunk_size, table_name):
                         if df.columns.to_list() != existing_columns:
                             existing_columns, df = alter_table(df, existing_columns, table_name, engine=engine)
                         try:
-                            fast_copy_from(df, "statcast", engine)
+                            fast_copy_from(df, table_name, engine)
                             print(f"Inserted {len(df)} rows from {start_date} to {end_date}")
                         except Exception as e:
                              print(f"[WARNING] fast_copy_from failed: {e}")
             except Exception as e:
                 print(f"Failed for {start_date} to {end_date}: {e}")
                 time.sleep(2)
+    return
 
 if __name__ == "__main__":
     # Load PostgreSQL connection string from environment variable
@@ -144,4 +145,4 @@ if __name__ == "__main__":
         print(e)
         exit()
     # Begin Statcast data ingestion
-    create_statcast(start_year = start_year, end_year = end_year, chunk_size = chunk_size, table_name = table_name)
+    create_statcast(start_year = start_year, end_year = end_year, chunk_size = chunk_size, table_name = table_name, engine=engine)
