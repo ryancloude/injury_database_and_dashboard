@@ -1,17 +1,5 @@
 FROM apache/airflow:2.8.1-python3.9
 
-# 1. Switch to root so we can install system packages and pip packages
-USER root
-
-# 2. Install build tools needed for spaCy and psycopg2-binary
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    build-essential \
-    libpq-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
 # 3. Switch back to airflow user
 USER airflow
 
