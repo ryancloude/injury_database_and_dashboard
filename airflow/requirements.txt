@@ -1,7 +1,0 @@
-os
-pandas
-pybaseball
-sqlalchemy
-dotenv
-urllib
-datetime

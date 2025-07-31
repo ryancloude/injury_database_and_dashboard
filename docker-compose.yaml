@@ -1,12 +1,13 @@
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.8.1
+  build:
+    context: .
+    dockerfile: Dockerfile.Airflow
   environment:
     &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${DATABASE_URL}
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
-    _PIP_ADDITIONAL_REQUIREMENTS: pandas psycopg2-binary pybaseball
     DATABASE_URL: ${DATABASE_URL}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
@@ -53,7 +54,9 @@ services:
     command: scheduler
 
   pipeline-app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: pipeline-app
     depends_on:
       - db

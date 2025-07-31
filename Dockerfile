@@ -10,7 +10,3 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -m spacy download en_core_web_sm
 
 COPY ./scripts ./scripts
-
-#Keeps the container running for exec access
-
-CMD ["tail", "-f", "/dev/null"]  

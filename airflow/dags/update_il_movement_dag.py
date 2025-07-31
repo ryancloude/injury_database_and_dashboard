@@ -18,16 +18,18 @@ default_args = {
 
 # Define the DAG for updating Statcast data daily
 with DAG(
-    dag_id = 'update_statcast_daily',
-    description='Updating statcast table in baseball db',
+    dag_id = 'update_il_movement_daily',
+    description='Updating il_mov table in baseball db',
     schedule='0 6 * * *',
-    start_date=datetime(2025, 7, 10, tzinfo=local_tz),
+    start_date=datetime(2025, 7, 31, tzinfo=local_tz),
+    catchup=False,  # Avoid backfilling
+    max_active_runs=1,  # Prevent overlapping DAG runs
     default_args=default_args
 ) as dag: 
     # BashOperator to run the Statcast update script inside the container
     run_script = BashOperator(
-    task_id='run_update_statcast',
-    bash_command='python /opt/airflow/scripts/update_statcast.py',
+    task_id='run_update_il_movement',
+    bash_command='python /opt/airflow/scripts/update_il_movement.py',
     env={ # Pass required environment variables into the Bash subprocess
             'DATABASE_URL': os.environ['DATABASE_URL'],
             'PYTHONPATH': '/opt/airflow/scripts'

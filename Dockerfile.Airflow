@@ -1,0 +1,28 @@
+FROM apache/airflow:2.8.1-python3.9
+
+# 1. Switch to root so we can install system packages and pip packages
+USER root
+
+# 2. Install build tools needed for spaCy and psycopg2-binary
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    build-essential \
+    libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Switch back to airflow user
+USER airflow
+
+# 4. Set working directory and install Python packages
+WORKDIR /opt/airflow
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m spacy download en_core_web_sm
+
+# 5. Optional: download spaCy model (if not included in requirements.txt)
+# RUN python -m spacy download en_core_web_sm
+
+# 6. Copy your scripts
+COPY ./scripts ./scripts

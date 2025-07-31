@@ -4,7 +4,6 @@ import sqlalchemy
 from sqlalchemy import create_engine, text
 import io
 import os
-import warnings
 import pandas as pd
 from datetime import datetime
 import spacy
@@ -190,28 +189,40 @@ def get_il_data(start_date, end_date, parser):
     for t in transactions:
         date = t.get('date', None)
         effective_date = t.get('effectiveDate', None)
-        desc = t.get('description', None)
-        if desc is None:
+        descr = t.get('description', None)
+        if descr is None:
             continue
         # Extract IL placement rows only
-        if any(x in desc.lower() for x in ["injured list", "disabled list"]) and not any(x in desc.lower() for x in ["transferred", "activated"]):
+        if any(x in descr.lower() for x in ["injured list", "disabled list"]) and not any(x in descr.lower() for x in ["transferred", "activated"]):
             player = t.get('person', {}).get('fullName', None)
             player_id = t.get('person', {}).get('id', None)
             team = t.get('toTeam', {}).get('name', None)
             if player is None or player_id is None:
                 continue
-            data.append([effective_date, date, team, player, player_id,desc])
+            data.append([effective_date, date, team, player, player_id,descr])
     # Create DataFrame
-    df = pd.DataFrame(data, columns=['effective_date', 'date', 'team', 'player', 'player_id','desc'])
+    df = pd.DataFrame(data, columns=['effective_date', 'date', 'team', 'player', 'player_id','descr'])
     if df.empty:
         return df
     # Choose resolved date from effective or log date
     df['date'] = df.apply(lambda row: row.date if row.date == row.effective_date else row.effective_date, axis=1)
     df = df.drop(columns=['effective_date'])
     # Apply NLP parser
-    injury_parsed = df["desc"].apply(parser)  # Series of dicts
+    injury_parsed = df["descr"].apply(parser)  # Series of dicts
     injury_df = pd.DataFrame(injury_parsed.tolist())
     df[['injury_side','injury_body_part','injury_type']] = injury_df[['side','body_part','injury_type']]
+    # Score each row based on how many injury fields are not null
+    df["injury_score"] = df[["injury_side", "injury_body_part", "injury_type"]].notnull().sum(axis=1)
+    # Keep only the row with the highest injury_score per player/date
+    df = df.sort_values("injury_score", ascending=False).drop_duplicates(subset=["player", "date"])
+    # Drop the temporary score column
+    df = df.drop(columns=["injury_score"])
+    #Drops rows where date is before 2015
+    df['date'] = pd.to_datetime(df['date'])
+    df = df[df['date'] > datetime(2015, 1, 1)]
+
+
+
     return df
 
 
@@ -224,7 +235,7 @@ def create_il_movement(start_year, end_date, chunk_size, table_name, engine):
     # Define column types for SQL table
     dtypes = {
     "team": sqlalchemy.Text,
-    "desc": sqlalchemy.Text,
+    "descr": sqlalchemy.Text,
     "date": sqlalchemy.Date,
     "player": sqlalchemy.Text,
     "player_id": sqlalchemy.Integer,

@@ -8,24 +8,19 @@ from datetime import date, timedelta
 # Import shared utility functions from create_statcast
 from create_statcast import get_date_chunks, alter_table, fast_copy_from
 
-# Initialize database connection from environment variable
-DATABASE_URL = os.environ['DATABASE_URL']
-engine = create_engine(DATABASE_URL)
-
-# Define constants
-chunk_size = 7 # Days per API call
-table_name = "statcast"
-today = date.today()
-
-def get_start_date(engine):
+def get_start_date(engine, table_name, column_name):
     """
     Queries the database for the most recent game date and returns the next day.
 
     Ensures that updates resume from the correct point without duplicating data.
     """
     with engine.connect() as conn:
-        result = conn.execute(text("select max(game_date) from statcast"))
-        start_date = result.scalar().date() + timedelta(days=1)
+        result = conn.execute(text(f"select max({column_name}) from {table_name}"))
+        value =  result.scalar()
+        try:
+            start_date = value.date() + timedelta(days=1)
+        except:
+            start_date = value + timedelta(days=1)
         return start_date
     
 
@@ -55,7 +50,7 @@ def update_statcast(engine, today, chunk_size, table_name):
         return
     
     # Determine date range to update
-    start_date = get_start_date(engine=engine)
+    start_date = get_start_date(engine=engine, column_name="game_date", table_name="statcast")
     end_date = today - timedelta(days=1)
     existing_columns = get_existing_columns(engine)
 
@@ -81,6 +76,14 @@ def update_statcast(engine, today, chunk_size, table_name):
 
 
 if __name__ == "__main__":
+    # Initialize database connection from environment variable
+    DATABASE_URL = os.environ['DATABASE_URL']
+    engine = create_engine(DATABASE_URL)
+
+    # Define constants
+    chunk_size = 7 # Days per API call
+    table_name = "statcast"
+    today = date.today()
     # Sanity check: test DB connection before running update
     try:
         with engine.connect() as conn:
