@@ -5,15 +5,18 @@ x-airflow-common: &airflow-common
   environment:
     &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${DATABASE_URL}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_URL}
+    BASEBALL_URL: ${BASEBALL_URL}
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
-    DATABASE_URL: ${DATABASE_URL}
+    DBT_PROFILES_DIR: /opt/airflow/.dbt
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./scripts:/opt/airflow/scripts
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
+    - ./dbt:/opt/dbt                         
+    - ./dbt/profiles:/opt/airflow/.dbt:ro
   depends_on:
     - db
   networks:
@@ -21,12 +24,12 @@ x-airflow-common: &airflow-common
 
 services:
   db:
-    image: postgres:13
+    image: postgres:15
     container_name: db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: baseball
+      POSTGRES_DB: airflow
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/sql:/sql
@@ -68,7 +71,26 @@ services:
     networks:
       - airflow_net
     command: tail -f /dev/null
-
+  dbt:
+    image: ghcr.io/dbt-labs/dbt-postgres:1.9.latest
+    container_name: dbt
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      DBT_PROFILES_DIR: /root/.dbt
+      DBT_TARGET: dev
+      # Pass through Postgres creds from .env
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Optional: tweak threads, etc., via env or profiles.yml
+    volumes:
+      - ./dbt:/usr/app               # your dbt project
+      - ./dbt/profiles:/root/.dbt    # profiles.yml goes here
+    working_dir: /usr/app
+    networks:
+      - airflow_net
 
 volumes:
   postgres_data:

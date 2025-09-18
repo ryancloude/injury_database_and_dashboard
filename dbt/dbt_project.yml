@@ -1,0 +1,23 @@
+name: "pitcher_injury"        # keep your project name
+version: "1.0.0"
+config-version: 2
+
+profile: "mlb"                # <-- MUST match the top key in profiles.yml (yours is "mlb")
+
+model-paths: ["models"]
+seed-paths:  ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+# your previous list syntax was malformed; this is correct
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  pitcher_injury:             # <-- MUST match the project name above (you had "mlb" here)
+    +materialized: view       # safe default
+    bronze:
+      +schema: bronze
+      +materialized: table
+    silver:
+      +schema: silver
+      +materialized: table

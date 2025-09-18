@@ -6,6 +6,8 @@ USER airflow
 # 4. Set working directory and install Python packages
 WORKDIR /opt/airflow
 COPY requirements.txt .
+USER airflow
+RUN pip install --no-cache-dir "dbt-core==1.9.1" "dbt-postgres==1.9.1"
 RUN pip install --no-cache-dir -r requirements.txt
 RUN python -m spacy download en_core_web_sm
 

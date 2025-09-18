@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    database: "{{ target.database }}"
+    tables:
+      - name: statcast
+        description: "MLB statcast pitch by pitch data"
+      - name: games
+        description: 'MLB games data'
+      - name: transactions
+        description: "MLB transaction data"
+      - name: teams
+        description: "MLB teams data"
+      - name: players
+        description: "MLB players data"

@@ -1,0 +1,2 @@
+#Run command to setup baseball database
+docker compose exec db psql -U airflow -d $POSTGRES_USER -c "CREATE DATABASE baseball;"
