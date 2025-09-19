@@ -44,3 +44,6 @@ select
         now()::timestamptz as silver_updated_at
 from src
 
+
+  -- Sliding window to pick up late corrections; change 14 -> 7/21/etc. as you like
+  where game_date >= current_date - interval '7 day'

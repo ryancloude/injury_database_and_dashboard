@@ -1,7 +1,7 @@
 x-airflow-common: &airflow-common
-  build:
-    context: .
-    dockerfile: Dockerfile.Airflow
+  image: apache/airflow:2.8.1-python3.9
+  env_file:
+    - .env
   environment:
     &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -9,14 +9,12 @@ x-airflow-common: &airflow-common
     BASEBALL_URL: ${BASEBALL_URL}
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
-    DBT_PROFILES_DIR: /opt/airflow/.dbt
+    PIP_ADDITIONAL_REQUIREMENTS: |
+      apache-airflow-providers-docker
   volumes:
     - ./airflow/dags:/opt/airflow/dags
-    - ./scripts:/opt/airflow/scripts
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
-    - ./dbt:/opt/dbt                         
-    - ./dbt/profiles:/opt/airflow/.dbt:ro
   depends_on:
     - db
   networks:
@@ -51,16 +49,26 @@ services:
     ports:
       - "8080:8080"
     command: webserver
-    # Airflow scheduler and webserver container
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
 
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
 
   pipeline-app:
     build:
       context: .
       dockerfile: Dockerfile
+    image: pipeline-app:latest
     container_name: pipeline-app
     depends_on:
       - db
@@ -80,7 +88,6 @@ services:
       - .env
     environment:
       DBT_PROFILES_DIR: /root/.dbt
-      DBT_TARGET: dev
       # Pass through Postgres creds from .env
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
