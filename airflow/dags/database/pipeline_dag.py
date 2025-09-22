@@ -96,6 +96,21 @@ with DAG(
             mounts=scripts_mount,
             environment={"BASEBALL_URL": BASEBALL_URL},
         )
+        bronze_roster_entries = DockerOperator(
+            task_id="roster_entries",
+            image=PIPELINE_APP_IMAGE,
+            command="python /app/scripts/database/bronze/bronze_roster_entries.py",
+            docker_url="unix://var/run/docker.sock",
+            api_version="auto",
+            network_mode=DOCKER_NETWORK,
+            auto_remove=True,
+            mounts=scripts_mount,
+            environment={"BASEBALL_URL": BASEBALL_URL},
+    )
+
+    # Intra-group dependencies
+    [bronze_players, bronze_transactions] >> bronze_roster_entries
+
 
     bronze_done = EmptyOperator(
         task_id="bronze_done",
