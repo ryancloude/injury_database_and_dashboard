@@ -13,7 +13,7 @@
     
 
     merge into "baseball"."silver"."transactions" as DBT_INTERNAL_DEST
-        using "transactions__dbt_tmp152555086412" as DBT_INTERNAL_SOURCE
+        using "transactions__dbt_tmp100038068394" as DBT_INTERNAL_SOURCE
         on (
                     DBT_INTERNAL_SOURCE.trans_id = DBT_INTERNAL_DEST.trans_id
                 )

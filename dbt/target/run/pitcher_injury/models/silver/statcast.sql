@@ -13,7 +13,7 @@
     
 
     merge into "baseball"."silver"."statcast" as DBT_INTERNAL_DEST
-        using "statcast__dbt_tmp152555602968" as DBT_INTERNAL_SOURCE
+        using "statcast__dbt_tmp100038411122" as DBT_INTERNAL_SOURCE
         on (
                     DBT_INTERNAL_SOURCE.pitch_id = DBT_INTERNAL_DEST.pitch_id
                 )
