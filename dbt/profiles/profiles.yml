@@ -1,0 +1,12 @@
+mlb:                        # <-- matches dbt_project.yml:profile
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: db
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      port: 5432
+      dbname: baseball
+      schema: analytics
+      threads: 4

@@ -428,7 +428,7 @@ def create_silver_injury_spans(il_placements, transactions, season_dates, engine
     injury = get_activations(il_placements, transactions, season_dates)
     injury = check_for_player_app(injury, player_app)
     injury = bridge_il_stints(injury, season_dates)
-    injury['sk_injury_span'] = range(len(df))
+    injury['sk_injury_span'] = range(len(injury))
     injury.to_sql(
         "injury_spans", engine, schema="silver", index=False, if_exists="replace"
     )
