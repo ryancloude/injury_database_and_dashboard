@@ -31,3 +31,11 @@ airflow/__pycache__/
 .vscode/
 *.swp
 .DS_Store
+
+# dbt artifacts
+target/
+dbt_packages/
+logs/
+dbt_modules/        # very old dbt versions
+.idea/
+.DS_Store
