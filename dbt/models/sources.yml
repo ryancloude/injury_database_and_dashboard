@@ -15,3 +15,13 @@ sources:
         description: "MLB teams data"
       - name: players
         description: "MLB players data"
+      - name: roster_entries
+        description: "Data on player roster membership"
+  - name: silver
+    schema: silver
+    database: "{{ target.database }}"
+    tables:
+    - name: il_placements
+      description: "IL placements from transactions with injury information parsed from transaction description"
+    - name: injury_spans
+      description: "Injury data built from il_placements, transactions, teams, players, and season_dates"

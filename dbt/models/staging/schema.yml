@@ -29,3 +29,13 @@ models:
     columns:
       - name: 'team_id'
         tests: [not_null, unique]
+  
+  - name: stg_roster_entries
+    columns:
+      - name: roster_sk
+        tests: [not_null, unique]
+
+  - name: stg_injury_spans
+    columns:
+    - name: injury_sk
+      tests: [not_null, unique]
