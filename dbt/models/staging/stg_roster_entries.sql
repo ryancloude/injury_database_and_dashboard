@@ -1,5 +1,5 @@
 {{config(materialized='view',
-        schema='bronze')}}
+        schema='silver')}}
 
 with src as (
     select * from {{source('bronze','roster_entries')}}
