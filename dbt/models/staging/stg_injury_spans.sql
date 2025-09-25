@@ -6,7 +6,7 @@ with src as (
 )
 
 select
-    {{dbt_utils.generate_surrogate_key(['person_id','il_place_date']) }} as injury_sk,
+    {{dbt_utils.generate_surrogate_key(['person_id','il_place_date']) }} as injury_span_sk,
     il_place_trans_id,
     il_place_date,
     person_id,

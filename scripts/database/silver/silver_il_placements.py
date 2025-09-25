@@ -103,7 +103,7 @@ def setup_injury_parser():
         "blister": "blister",
         "repair": "surgery",
         "construction": "surgery",
-        "reconstruction": "surgery",
+        "reconstruction": "tear",
         "replacement": "surgery",
         "surgery": "surgery",
         "bruised": "contusion",
@@ -423,7 +423,7 @@ def setup_injury_parser():
                 injuries_found.append("tear")
 
         if "elbow" in body_parts_found and "surgery" in injuries_found:
-            body_parts_found.append("ucl")  # <-- FIX 2: add to the candidate list
+            body_parts_found.append("ucl")
             injuries_found.append("tear")
 
         if "concussion" in injuries_found and "head" not in body_parts_found:
