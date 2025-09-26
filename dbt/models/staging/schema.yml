@@ -39,3 +39,9 @@ models:
     columns:
     - name: injury_sk
       tests: [not_null, unique]
+    tests:
+    - dbt_utils.mutually_exclusive_ranges:
+        lower_bound_column: il_place_date
+        # If return_date can be NULL, treat it as open-ended:
+        upper_bound_column: "coalesce(return_date, '9999-12-31')"
+        partition_by: person_id

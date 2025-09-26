@@ -6,7 +6,7 @@ with src as (
 )
 
 select
-    {{dbt_utils.generate_surrogate_key(['person_id','team_id','start_date','status_code']) }} as roster_sk,
+    {{dbt_utils.generate_surrogate_key(['person_id','team_id','start_date']) }} as roster_sk,
     person_id,
     team_id,
     start_date,

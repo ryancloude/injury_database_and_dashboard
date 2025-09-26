@@ -14,7 +14,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 
-def get_activations(il_placements, transactions, season_dates):
+def get_activations(il_placements, transactions, season_dates, teams):
     """Attach activation information to IL placements.
 
     Parameters
@@ -37,23 +37,10 @@ def get_activations(il_placements, transactions, season_dates):
         transaction (if any) and offseason return adjustments.
     """
     off_il_mask = (
-        (
-            (
-                transactions["description"].str.contains(
-                    "activated|reinsated|recalled|returned|status changed"
-                )
-            )
-            | (
-                transactions["typecode"].isin(
-                    ["DFA", "REL", "RET", "OUT", "DEI", "DEC", "OPT", "DES", "CLW"]
-                )
-            )
-        )
-        | (
-            (transactions.typecode == "ASG")
-            & transactions.toteam_id.isin(mlb_teams["id"])
-        )
-    ) & ~transactions["description"].str.contains("all-stars")
+        ((transactions["description"].str.contains("activated|reinstated|recalled|returned|status changed"))
+            | (transactions["typecode"].isin(["DFA", "REL", "RET", "OUT", "DEI", "DEC", "OPT", "DES", "CLW"])))
+        | ((transactions.typecode == "ASG")
+            & transactions.toteam_id.isin(teams["id"]))) & ~transactions["description"].str.contains("all-stars")
     # Filter transactions to those representing roster activations, demotions, or
     # other events that indicate a player is leaving the IL.
     off_il = transactions[off_il_mask]
@@ -93,6 +80,12 @@ def get_activations(il_placements, transactions, season_dates):
     injury.loc[offseason_return_mask, "return_date"] = injury.last_game + timedelta(7)
     injury.loc[offseason_return_mask, "return_team_id"] = injury.il_place_team
     injury = injury.drop(columns=["season", "last_game"])
+    # If a player is placed by on the IL again before being activated (can happen with rehab assignemnts)
+    # Then the earliest IL placement will have its return_date set to None and IL stints is combined into one
+    # in the bridge IL_stints functions
+    multi = injury.groupby(['person_id','return_date']).transform("size") > 1
+    earliest = injury['il_place_date'].eq(injury.groupby(['person_id','return_date'])['il_place_date'].transform("min"))
+    injury.loc[(multi & earliest), 'return_date'] = None
     return injury
 
 
@@ -159,23 +152,13 @@ def bridge_il_stints(injury, season_dates):
         Consolidated injury spans that include secondary injury descriptors and
         account for offseason gaps between related IL placements.
     """
-    injury["next_il_placement"] = injury.groupby(["person_id"])["il_place_date"].shift(
-        -1
-    )
+    injury["next_il_placement"] = injury.groupby(["person_id"])["il_place_date"].shift(-1)
     injury["next_il_team"] = injury.groupby(["person_id"])["il_place_team"].shift(-1)
-    injury["next_il_return_team"] = injury.groupby(["person_id"])[
-        "return_team_id"
-    ].shift(-1)
-    injury["next_trans_id_return"] = injury.groupby(["person_id"])[
-        "return_trans_id"
-    ].shift(-1)
-    injury["next_il_return_date"] = injury.groupby(["person_id"])["return_date"].shift(
-        -1
-    )
+    injury["next_il_return_team"] = injury.groupby(["person_id"])["return_team_id"].shift(-1)
+    injury["next_trans_id_return"] = injury.groupby(["person_id"])["return_trans_id"].shift(-1)
+    injury["next_il_return_date"] = injury.groupby(["person_id"])["return_date"].shift(-1)
     injury["next_body_part"] = injury.groupby(["person_id"])["body_part"].shift(-1)
-    injury["next_body_part_group"] = injury.groupby(["person_id"])[
-        "body_part_group"
-    ].shift(-1)
+    injury["next_body_part_group"] = injury.groupby(["person_id"])["body_part_group"].shift(-1)
     injury["next_injury_type"] = injury.groupby(["person_id"])["injury_type"].shift(-1)
     injury["season"] = injury["il_place_date"].dt.year
     # Attach the last game of the current season for the team that activated the player.
@@ -198,22 +181,16 @@ def bridge_il_stints(injury, season_dates):
     injury = injury.rename(columns={"first_game": "next_season_first_game"})
     injury["offseason_activation"] = injury.return_date.between(
         injury.last_game,
-        pd.to_datetime(
-            pd.Series(injury.last_game.dt.year.astype("Int64"), dtype="string")
-            + "-12-31"
-        ),
-    )
+        pd.to_datetime(pd.Series(injury.last_game.dt.year.astype("Int64"), dtype="string")+ "-12-31"),)
     # A "pre Opening Day" placement is one that falls before the next season's
     # first game for that franchise, signalling an offseason bridge scenario.
     injury["pre_od_placement"] = (
         injury.next_il_placement <= injury.next_season_first_game
     ) & (injury.next_il_placement.dt.year == injury.next_season_first_game.dt.year)
     cu_unknown = injury["body_part_group"].isna() | (
-        injury["body_part_group"] == "undisclosed"
-    )
+        injury["body_part_group"] == "undisclosed")
     nx_unknown = injury["next_body_part_group"].isna() | (
-        injury["next_body_part_group"] == "undisclosed"
-    )
+        injury["next_body_part_group"] == "undisclosed")
     injury["bpg_clean"] = injury["body_part_group"].where(~cu_unknown)
     injury["next_bpg_clean"] = injury["next_body_part_group"].where(~nx_unknown)
     injury["prev_known_bpg"] = injury.groupby("person_id")["bpg_clean"].ffill()
@@ -224,72 +201,39 @@ def bridge_il_stints(injury, season_dates):
     )  # catches 'tear' and 'partial tear'
 
     mask = (
-        (
-            (injury["return_date"].isnull())
-            & ~(injury["next_il_placement"].isnull())
-            # Player never activated but is immediately re-placed on IL.
-        )
-        | (
+        # Player never activated but is re-placed on IL.
+        ((injury["return_date"].isnull())
+            & ~(injury["next_il_placement"].isnull()))
+        | (# Returned in offseason and placed back on IL before Opening Day.
             injury["offseason_activation"]
-            & injury["pre_od_placement"]
-            # Returned in offseason and placed back on IL before Opening Day.
-        )
-    ) & (
+            & injury["pre_od_placement"])) & (
         # same known group → bridge
         (injury["body_part_group"] == injury["next_body_part_group"])
         # known → unknown → always bridge
         | (~cu_unknown & nx_unknown)
         # unknown → known → bridge only if it matches the previous known
-        | (
-            cu_unknown
+        | (cu_unknown
             & ~nx_unknown
-            & (injury["prev_known_bpg"] == injury["next_bpg_clean"])
-        )
+            & (injury["prev_known_bpg"] == injury["next_bpg_clean"]))
         # unknown → unknown → still counts as an edge
-        | (cu_unknown & nx_unknown)
-    )
+        | (cu_unknown & nx_unknown))
     injury["bridge"] = mask
     # Start a new bridge group whenever the bridge condition is not satisfied for a placement.
-    injury["bridge_break"] = ~injury.groupby("person_id")["bridge"].shift(
-        fill_value=False
-    )
+    injury["bridge_break"] = ~injury.groupby("person_id")["bridge"].shift(fill_value=False)
     injury["bridge_group"] = injury.groupby("person_id")["bridge_break"].cumsum()
     sev_rows = (
-        injury.loc[
-            sev_mask,
-            [
-                "person_id",
-                "bridge_group",
-                "il_place_date",
-                "body_part",
-                "injury_type",
-                "raw_injury",
-            ],
-        ]
+        injury.loc[sev_mask,["person_id","bridge_group","il_place_date","body_part", "injury_type", "raw_injury"]]
         .sort_values("il_place_date")
         .groupby(["person_id", "bridge_group"], as_index=False)
         .tail(1)  # latest surgery/tear in the bridge
         .rename(
-            columns={
-                "body_part": "sev_body_part",
+            columns={"body_part": "sev_body_part",
                 "injury_type": "sev_injury_type",
-                "raw_injury": "sev_raw_injury",
-            }
-        )
-    )
+                "raw_injury": "sev_raw_injury",}))
     injury = injury.merge(
-        sev_rows[
-            [
-                "person_id",
-                "bridge_group",
-                "sev_body_part",
-                "sev_injury_type",
-                "sev_raw_injury",
-            ]
-        ],
+        sev_rows[["person_id","bridge_group","sev_body_part","sev_injury_type","sev_raw_injury"]],
         on=["person_id", "bridge_group"],
-        how="left",
-    )
+        how="left")
     injury[
         [
             "chain_team_return",
@@ -425,12 +369,15 @@ def create_silver_injury_spans(il_placements, transactions, season_dates, engine
     This function relies on the module-level ``mlb_teams`` and ``player_app``
     globals being populated prior to invocation when executed as a script.
     """
-    injury = get_activations(il_placements, transactions, season_dates)
+    injury = get_activations(il_placements, transactions, season_dates, mlb_teams)
     injury = check_for_player_app(injury, player_app)
     injury = bridge_il_stints(injury, season_dates)
+    injury["next_il_placement"] = injury.groupby(["person_id"])["il_place_date"].shift(-1)
+    mask = injury['return_date'].isnull() & ~injury["next_il_placement"].isnull()
+    injury.loc[mask, "return_date"] = injury['next_il_placement']
+    injury = injury.drop(columns=["next_il_placement"])
     injury.to_sql(
-        "injury_spans", engine, schema="silver", index=False, if_exists="replace"
-    )
+        "injury_spans", engine, schema="silver", index=False, if_exists="replace")
 
 
 if __name__ == "__main__":
@@ -449,9 +396,9 @@ if __name__ == "__main__":
     mlb_teams = pd.read_sql(mlb_teams_query, engine)
     il_place_query = "select * from silver.il_placements;"
     il_placements = pd.read_sql(il_place_query, engine)
-    transactions_query = "SELECT * FROM silver.transactions where description is not null and person_id is not null"
+    transactions_query = "SELECT * FROM silver.transactions where description is not null and person_id is not null;"
     transactions = pd.read_sql(transactions_query, engine)
-    season_dates_query = "select * from silver.season_start_end"
+    season_dates_query = "select * from silver.season_dates;"
     season_dates = pd.read_sql(season_dates_query, engine)
     player_apperance_query = """select DISTINCT pitcher as person_id, game_date, pitcher_team as team_id
     from silver.statcast

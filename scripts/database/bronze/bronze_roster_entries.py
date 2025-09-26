@@ -105,5 +105,5 @@ if __name__ == "__main__":
 
     chunk_size = 150
 
-    primary_keys = ['person_id', 'status_code', 'team_id','start_date']
+    primary_keys = ['person_id','team_id','start_date']
     create_roster_entries(players, teams, chunk_size, base, schema, engine, primary_keys)

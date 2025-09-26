@@ -8,6 +8,7 @@ with src as (
 select
     id as team_id,
     name,
+    season,
     teamcode,
     filecode,
     abbreviation,

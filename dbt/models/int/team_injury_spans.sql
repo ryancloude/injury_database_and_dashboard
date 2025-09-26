@@ -45,7 +45,7 @@ select i.person_id,
 from i
 left join r 
 on i.person_id = r.person_id
-and i.il_place_date <= r.end_date
+and i.il_place_date < r.end_date
 and i.return_date >= r.start_date
 )
 

@@ -27,6 +27,7 @@ select
     primaryposition_code,
     batside_code,
     pitchhand_code,
+    season,
     nickname
 
 from src

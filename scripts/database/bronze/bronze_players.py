@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     base_table_name = 'players'
     schema = 'bronze'
-    primary_key = ['id', 'season']
+    primary_key = ['id']
 
     starting_season = get_starting_season(engine=engine, base=base_table_name, column_name='season', schema='bronze')
     end_season = datetime.today().year

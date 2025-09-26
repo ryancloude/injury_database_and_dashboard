@@ -1,7 +1,7 @@
 {{ config(
     materialized='view',
     schema='silver',
-    alias='season_start_end',
+    alias='season_dates',
 ) }}
 
 
