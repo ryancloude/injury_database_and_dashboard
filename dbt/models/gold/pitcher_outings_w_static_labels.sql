@@ -3,7 +3,9 @@
   schema='gold',
   incremental_strategy = 'merge',
   unique_key = ['pitcher','game_pk'],
-  on_schema_change = 'sync_all_columns')}}
+  on_schema_change = 'sync_all_columns',
+  post_hook=[
+  "create index if not exists idx_gold_pitcher_gamepk on {{ this }} (outing_id)"])}}
 
 {% if is_incremental() %}
 with cutoff as (

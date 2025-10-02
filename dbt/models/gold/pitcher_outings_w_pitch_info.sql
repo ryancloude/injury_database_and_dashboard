@@ -1,8 +1,9 @@
 {{ config(
     materialized='table',
-    schema='gold',
-    alias='pitcher_outings_wide'
+    schema='gold'
 ) }}
+
+{% set lookback_days = var('incremental_lookback_days', 35) %}
 
 {% set pitch_types = var('pitch_types', ['CH','CU','FC','FF','FS','OT','SI','SL','ST']) %}
 {% set metrics = [
@@ -16,16 +17,38 @@
   'avg_rel_ext','stddev_rel_ext'
 ] %}
 
-with po as (
-  select * from {{ ref('pitcher_outings') }}
+{% if is_incremental() %}
+with cutoff as (
+  select (coalesce(max(game_date), '2015-01-01'::date) - interval '{{ lookback_days }} days') as since
+  from {{ this }}
 ),
+
+{% else %}
+with
+{% endif %}
+
+po as (
+  select *
+  from {{ ref('pitcher_outings') }} po
+  {% if is_incremental() %}
+  where po.game_date >= (select since from cutoff)
+  {% endif %}
+),
+
 popt as (
-  select * from {{ ref('pitcher_outings_pitch_type') }}
+  select *
+  from {{ ref('pitcher_outings_pitch_type') }} popt
+  {% if is_incremental() %}
+  where popt.game_date >= (select since from cutoff)
+  {% endif %}
 ),
+
 base as (
   select
+      po.outing_id,
       po.pitcher,
       po.game_date,
+      po.game_pk,
       po.pitcher_team,
       po.pitch_count       as outing_pitch_count,
       po.days_since_last_outing,
@@ -45,10 +68,12 @@ base as (
    and po.game_date = popt.game_date
 )
 
+
 select
   pitcher,
   game_date,
-
+  max(outing_id) as outing_id,
+  max(game_pk) as game_pk,
   max(pitcher_team)             as pitcher_team,
   max(outing_pitch_count)       as outing_pitch_count,
   max(days_since_last_outing)   as days_since_last_outing,
