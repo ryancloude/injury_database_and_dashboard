@@ -16,7 +16,8 @@ select
     teams_away_score as away_score,
     teams_home_team_id as home_team_id,
     teams_home_score as home_score,
-    venue_id
+    venue_id,
+    gamenumber
 
 
     

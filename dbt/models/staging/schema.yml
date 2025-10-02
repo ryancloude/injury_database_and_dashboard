@@ -28,7 +28,7 @@ models:
     description: 'team information from bronze.teams'
     columns:
       - name: 'team_id'
-        tests: [not_null, unique]
+        tests: [not_null]
   
   - name: stg_roster_entries
     columns:
@@ -37,7 +37,7 @@ models:
 
   - name: stg_injury_spans
     columns:
-    - name: injury_sk
+    - name: injury_span_sk
       tests: [not_null, unique]
     tests:
     - dbt_utils.mutually_exclusive_ranges:

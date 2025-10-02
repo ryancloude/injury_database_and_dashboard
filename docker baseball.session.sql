@@ -1,9 +1,18 @@
-select int.pitcher_outings.*, 
-game_date::date - birthdate::date as age,
-  (split_part(height, '''', 1)::int * 12) +
-  split_part(split_part(height, '''', 2), '"', 1)::int as height,
-  weight
-from int.pitcher_outings
-join silver.players
-on int.pitcher_outings.pitcher = silver.players.person_id
-limit 10;
+with pitcher_ranks as (select pitcher, pitcher_team, game_date, game_pk,
+row_number() over(PARTITION BY game_pk, pitcher_team order by at_bat_number, pitch_number) as rn_pitcher
+from silver.statcast),
+
+base as (
+select po.*, rn_pitcher
+from int.pitcher_outings_w_team_games po
+left join (select * from pitcher_ranks where rn_pitcher = 1) as pr
+on po.game_pk = pr.game_pk 
+and po.pitcher = pr.pitcher),
+
+select pitcher, pitcher_team, game_date, game_pk, season, days_since_last_outing, team_game_num,
+case
+when rn_pitcher = 1 then 'starter'
+else 'reliever'
+end as role
+from base
+

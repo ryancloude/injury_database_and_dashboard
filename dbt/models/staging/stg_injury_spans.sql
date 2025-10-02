@@ -1,5 +1,6 @@
 {{config(materialized='view',
         schema='silver')}}
+        
 
 with src as (
     select * from {{source('silver','injury_spans')}}
