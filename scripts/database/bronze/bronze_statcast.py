@@ -20,7 +20,7 @@ import warnings
 import io
 from pandas.api.types import is_float_dtype
 
-def get_start_date(engine, base: str, column_name: str, window: int, schema:str, default_start=datetime(2015,1,1)):
+def get_start_date(engine, base: str, column_name: str, window: int, schema:str, default_start=datetime(2010,1,1)):
     """
     Compute the first date to request for an incremental load.
 

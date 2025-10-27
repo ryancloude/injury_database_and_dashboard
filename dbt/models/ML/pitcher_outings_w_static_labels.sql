@@ -35,7 +35,7 @@ bio as (
 ), 
 
 pitcher_role as (
-  select outing_id, role
+  select outing_id, role, role_switch
   from {{ ref('pitcher_outings_w_role') }}
     {% if is_incremental() %}
   where game_date >= (select since from cutoff)
@@ -60,12 +60,17 @@ tg.game_pk,
 tg.pitcher_team,
 tg.season, 
 tg.team_game_num,
-tg.days_since_last_outing,
+case
+when tg.days_since_last_outing > 30 then null
+else tg.days_since_last_outing
+end as days_since_last_outing,
 bio.pitchhand_code,
 bio.age,
 bio.height,
 bio.weight,
+bio.weight / (bio.height * bio.height) * 703 as bmi,
 pitcher_role.role,
+pitcher_role.role_switch,
 labels.last_app_before_injury,
 labels.last_app_before_injury_arm,
 labels.injured_within_7_days,

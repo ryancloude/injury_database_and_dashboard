@@ -44,5 +44,6 @@ avg_horz_mov, stddev_horz_mov,
 avg_vert_mov, stddev_vert_mov,
 avg_horz_rel, stddev_horz_rel,
 avg_vert_rel, stddev_vert_rel, 
-avg_rel_ext, stddev_rel_ext
+avg_rel_ext, stddev_rel_ext,
+ROUND(stddev_horz_rel + stddev_vert_rel + stddev_rel_ext, 2) as stddev_rel_total
 from outings

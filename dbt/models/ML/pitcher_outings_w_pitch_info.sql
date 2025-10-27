@@ -14,7 +14,8 @@
   'avg_vert_mov','stddev_vert_mov',
   'avg_horz_rel','stddev_horz_rel',
   'avg_vert_rel','stddev_vert_rel',
-  'avg_rel_ext','stddev_rel_ext'
+  'avg_rel_ext','stddev_rel_ext',
+  'stddev_rel_total'
 ] %}
 
 {% if is_incremental() %}
@@ -66,9 +67,9 @@ base as (
   left join popt
     on po.pitcher   = popt.pitcher
    and po.game_date = popt.game_date
-)
+),
 
-
+pitch_info as (
 select
   pitcher,
   game_date,
@@ -90,6 +91,16 @@ select
     {%- endfor -%}
     {% if not loop.last %}, {% endif %}
   {%- endfor %}
-
 from base
 group by pitcher, game_date
+)
+
+select *,
+outing_pitch_count - lag(outing_pitch_count, 1) over (partition by pitcher order by game_date) as outing_pitch_count_delta,
+{%- for pt in pitch_types -%}
+    {%- for m in metrics -%}
+    {{ pt }}_{{ m }} - lag({{ pt }}_{{ m }}, 1) over (partition by pitcher order by game_date) as {{ pt }}_{{ m }}_delta{% if not loop.last %},{% endif %}
+    {%- endfor -%}
+    {% if not loop.last %}, {% endif %}
+  {%- endfor %}
+from pitch_info

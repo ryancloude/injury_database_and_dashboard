@@ -13,7 +13,7 @@ players as (
 select pitcher_outings.*, pitchhand_code ,game_date::date - birthdate::date as age,
   (split_part(height, '''', 1)::int * 12) +
   split_part(split_part(height, '''', 2), '"', 1)::int as height,
-  weight
+  weight 
 from pitcher_outings
 join players
 on pitcher_outings.pitcher = players.person_id

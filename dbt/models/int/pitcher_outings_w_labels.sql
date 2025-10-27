@@ -46,7 +46,7 @@ next_il as (
     po.game_pk,
     n.next_il_date,
     n.injury_span_sk,
-    (n.body_part_group in ('other_arm', 'elbow','shoulder')) as arm_injury
+    (coalesce(n.body_part_group in ('other_arm','elbow','shoulder'), false)) as arm_injury
   from pitcher_outings po
   left join lateral (
     select i.il_place_date as next_il_date, i.injury_span_sk, i.body_part_group

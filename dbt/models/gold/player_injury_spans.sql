@@ -24,6 +24,7 @@ injury_spans as (
     person_id,
     raw_injury,
     side,
+    body_part,
     injury_type,
     body_part_group,
     second_injury_type,
