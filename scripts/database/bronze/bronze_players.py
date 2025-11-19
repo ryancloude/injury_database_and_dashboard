@@ -17,7 +17,7 @@ from bronze_statcast import fast_copy_from, alter_table, ensure_bronze_tables_fr
 merge_staging_into_target, truncate_staging, get_table_columns_and_types, infer_and_cast_dtypes_psql
 from datetime import datetime
 
-def get_starting_season(engine, base: str, column_name: str, schema:str, default_start=2015):
+def get_starting_season(engine, base: str, column_name: str, schema:str, default_start=2010):
     """
     Compute the first season to request for an incremental load.
     Looks up the max season already present in the target table. If the table

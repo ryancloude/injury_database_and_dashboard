@@ -36,6 +36,9 @@ airflow/__pycache__/
 target/
 dbt_packages/
 logs/
-dbt_modules/        # very old dbt versions
+dbt_modules/  
 .idea/
 .DS_Store
+
+#projections csv
+projections/

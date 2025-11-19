@@ -6,10 +6,16 @@
 ) }}
 
 
-with src as (
-  -- Reuse staging instead of re-writing transforms
+with pl as (
   select * from {{ ref('stg_players') }}
+),
+
+pr as (
+  select distinct person_id, nameascii from {{ ref('stg_projections') }}
 )
 
-select *
-from src
+
+select pl.*, pr.nameascii
+from pl
+left join pr
+on pl.person_id = pr.person_id

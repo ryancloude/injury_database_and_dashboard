@@ -17,6 +17,10 @@ sources:
         description: "MLB players data"
       - name: roster_entries
         description: "Data on player roster membership"
+      - name: projections
+        description: "Zips projections from FanGraphs for each player"
+      - name: salary
+        description: "Salary data for each player from Baseball Prospectus"
   - name: silver
     schema: silver
     database: "{{ target.database }}"

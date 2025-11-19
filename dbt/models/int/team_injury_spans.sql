@@ -24,7 +24,7 @@ r as (
 
 
 team_spans as (
-select i.person_id, 
+select i.person_id,
         Case 
         when team_id is null then il_place_team
         else team_id

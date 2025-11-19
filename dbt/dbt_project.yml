@@ -1,23 +1,37 @@
-name: "pitcher_injury"        # keep your project name
+name: "pitcher_injury"
 version: "1.0.0"
 config-version: 2
 
-profile: "mlb"                # <-- MUST match the top key in profiles.yml (yours is "mlb")
+profile: "mlb"
 
 model-paths: ["models"]
 seed-paths:  ["seeds"]
 macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
-# your previous list syntax was malformed; this is correct
+
 clean-targets: ["target", "dbt_packages"]
 
+seeds:
+  +schema: ref
+  +quote_columns: false
+  +column_types:
+    season: integer
+    min_salary_usd: integer
+  +post-hook:
+    - "alter table {{ this }} add primary key (season)"
+
+
+
 models:
-  pitcher_injury:             # <-- MUST match the project name above (you had "mlb" here)
-    +materialized: view       # safe default
+  pitcher_injury:
+    +materialized: view
     bronze:
       +schema: bronze
       +materialized: table
     silver:
       +schema: silver
+      +materialized: table
+    gold:
+      +schema: gold
       +materialized: table

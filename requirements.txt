@@ -1,0 +1,13 @@
+pandas
+SQLAlchemy
+psycopg2-binary
+PyYAML
+requests
+schedule
+pybaseball
+ipykernel
+dotenv
+tqdm
+spacy
+bs4
+Unidecode

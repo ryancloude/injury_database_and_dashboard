@@ -24,6 +24,7 @@ HOST_DBT_PROFILES = os.environ["HOST_DBT_PROFILES"]
 
 # ── Reusable mounts ────────────────────────────────────────────────────────────────────
 scripts_mount = [Mount(target="/app/scripts", source=HOST_SCRIPTS_DIR, type="bind")]
+
 dbt_mounts = [
     Mount(target="/usr/app",   source=HOST_DBT_DIR,      type="bind", read_only=False),
     Mount(target="/root/.dbt", source=HOST_DBT_PROFILES, type="bind", read_only=True),
@@ -58,6 +59,7 @@ with DAG(
             network_mode=DOCKER_NETWORK,
             auto_remove=True,
             mounts=scripts_mount,
+            mount_tmp_dir=False,
             environment={"BASEBALL_URL": BASEBALL_URL},
         )
 
@@ -70,6 +72,7 @@ with DAG(
             network_mode=DOCKER_NETWORK,
             auto_remove=True,
             mounts=scripts_mount,
+            mount_tmp_dir=False,
             environment={"BASEBALL_URL": BASEBALL_URL},
         )
 
@@ -82,6 +85,7 @@ with DAG(
             network_mode=DOCKER_NETWORK,
             auto_remove=True,
             mounts=scripts_mount,
+            mount_tmp_dir=False,
             environment={"BASEBALL_URL": BASEBALL_URL},
         )
 
@@ -94,6 +98,7 @@ with DAG(
             network_mode=DOCKER_NETWORK,
             auto_remove=True,
             mounts=scripts_mount,
+            mount_tmp_dir=False,
             environment={"BASEBALL_URL": BASEBALL_URL},
         )
         bronze_roster_entries = DockerOperator(
@@ -105,6 +110,7 @@ with DAG(
             network_mode=DOCKER_NETWORK,
             auto_remove=True,
             mounts=scripts_mount,
+            mount_tmp_dir=False,
             environment={"BASEBALL_URL": BASEBALL_URL},
     )
 
@@ -150,11 +156,12 @@ with DAG(
         network_mode=DOCKER_NETWORK,
         auto_remove=True,
         mounts=scripts_mount,
+        mount_tmp_dir=False,
         environment={"BASEBALL_URL": BASEBALL_URL},
     )
 
     silver_injury = DockerOperator(
-        task_id="injury_spans",
+        task_id="silver_injury_spans",
         image=PIPELINE_APP_IMAGE,
         command="python /app/scripts/database/silver/silver_injury_spans.py",
         docker_url="unix://var/run/docker.sock",
@@ -162,12 +169,35 @@ with DAG(
         network_mode=DOCKER_NETWORK,
         auto_remove=True,
         mounts=scripts_mount,
+        mount_tmp_dir=False,
         environment={"BASEBALL_URL": BASEBALL_URL},
     )
 
+
+    dbt_gold = DockerOperator(
+        task_id="dbt_run_gold",
+        image=DBT_IMAGE,
+        command="run --select +path:models/gold",
+        docker_url="unix://var/run/docker.sock",
+        api_version="auto",
+        network_mode=DOCKER_NETWORK,
+        auto_remove=True,
+        working_dir="/usr/app",
+        mounts=dbt_mounts,
+        mount_tmp_dir=False,
+        environment={
+        "PYTHONUNBUFFERED": "1",
+        # pass through DB creds/host so profiles.yml env_var(...) resolves
+        "POSTGRES_USER": os.getenv("POSTGRES_USER", ""),
+        "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+        "POSTGRES_DB": os.getenv("POSTGRES_DB", "airflow"),
+        "POSTGRES_HOST": os.getenv("POSTGRES_HOST", "db"),
+        "POSTGRES_PORT": os.getenv("POSTGRES_PORT", "5432"),
+    },
+    )
     end = EmptyOperator(task_id="end")
 
-    # ── Graph ──────────────────────────────────────────────────────────────────────────
+    # ── Graph
     start >> bronze
     bronze >> bronze_done
-    bronze_done >> dbt_silver >> silver_il_placements >> silver_injury >> end
+    bronze_done >> dbt_silver >> silver_il_placements >> silver_injury >> dbt_gold>> end

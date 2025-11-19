@@ -9,9 +9,8 @@ spans are written to the silver schema of the warehouse for downstream analysis.
 
 import os
 from datetime import timedelta
-
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 
 
 def get_activations(il_placements, transactions, season_dates, teams):
@@ -24,7 +23,7 @@ def get_activations(il_placements, transactions, season_dates, teams):
         ``il_place_team`` columns.
     transactions : pandas.DataFrame
         Player transaction log containing descriptions and type codes used to
-        infer activations. Relies on the module-level ``mlb_teams`` lookup that
+        infer activations. Relies on the module-level ``teams`` lookup that
         is populated when the module is executed as a script.
     season_dates : pandas.DataFrame
         Season calendar that provides ``first_game`` and ``last_game`` dates for
@@ -350,7 +349,7 @@ def bridge_il_stints(injury, season_dates):
     return injury
 
 
-def create_silver_injury_spans(il_placements, transactions, season_dates, engine):
+def create_silver_injury_spans(il_placements, transactions, season_dates, teams, player_app,engine):
     """Build the injury spans table and persist it to the database.
 
     Parameters
@@ -366,18 +365,30 @@ def create_silver_injury_spans(il_placements, transactions, season_dates, engine
 
     Notes
     -----
-    This function relies on the module-level ``mlb_teams`` and ``player_app``
+    This function relies on the module-level ``eams`` and ``player_app``
     globals being populated prior to invocation when executed as a script.
     """
-    injury = get_activations(il_placements, transactions, season_dates, mlb_teams)
+    injury = get_activations(il_placements, transactions, season_dates, teams)
     injury = check_for_player_app(injury, player_app)
     injury = bridge_il_stints(injury, season_dates)
     injury["next_il_placement"] = injury.groupby(["person_id"])["il_place_date"].shift(-1)
     mask = injury['return_date'].isnull() & ~injury["next_il_placement"].isnull()
     injury.loc[mask, "return_date"] = injury['next_il_placement']
     injury = injury.drop(columns=["next_il_placement"])
-    injury.to_sql(
-        "injury_spans", engine, schema="silver", index=False, if_exists="replace")
+    with engine.begin() as conn:
+        if inspect(engine).has_table(table_name="injury_spans", schema="silver"):
+                conn.execute(text("TRUNCATE TABLE silver.injury_spans"))
+        injury.to_sql(
+                "injury_spans",
+                conn,
+                schema="silver",
+                index=False,
+                if_exists="append",
+                method="multi",
+                chunksize=10000,
+        )
+    return injury
+        
 
 
 if __name__ == "__main__":
@@ -392,8 +403,8 @@ if __name__ == "__main__":
         print("Failed to connect to PostgreSQL:")
         print(e)
         exit()
-    mlb_teams_query = "select id, name from bronze.teams;"
-    mlb_teams = pd.read_sql(mlb_teams_query, engine)
+    teams_query = "select id, name from bronze.teams;"
+    teams = pd.read_sql(teams_query, engine)
     il_place_query = "select * from silver.il_placements;"
     il_placements = pd.read_sql(il_place_query, engine)
     transactions_query = "SELECT * FROM silver.transactions where description is not null and person_id is not null;"
@@ -406,4 +417,4 @@ if __name__ == "__main__":
     select distinct batter as person_id, game_date, batter_team as team_id
     from silver.statcast;"""
     player_app = pd.read_sql(player_apperance_query, engine)
-    create_silver_injury_spans(il_placements, transactions, season_dates, engine)
+    create_silver_injury_spans(il_placements, transactions, season_dates, teams, player_app, engine)

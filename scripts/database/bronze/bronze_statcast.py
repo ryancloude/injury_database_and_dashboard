@@ -208,7 +208,7 @@ def fast_copy_from(df: pd.DataFrame, schema: str, base: str, engine):
         conn.commit()
     except Exception as e:
         conn.rollback()
-        print(f"[❌] fast_copy_from failed: {e}")
+        print(f"fast_copy_from failed: {e}")
 
         
     finally:
@@ -350,7 +350,7 @@ def create_indexes(engine, indexes: dict, schema: str, base: str):
             conn.execute(text(f'CREATE INDEX IF NOT EXISTS idx_{name} ON {schema}.{base} ({",".join(columns)});'))
     return
 
-def merge_staging_into_target(schema: str, base: str,engine, primary_keys: list, columns: list):
+def merge_staging_into_target(schema: str, base: str, engine, primary_keys: list, columns: list):
     """Idempotently upsert from staging -> target using MERGE.
 
     Rows with NULLs in any primary-key column are skipped. On match, updates non-PK columns

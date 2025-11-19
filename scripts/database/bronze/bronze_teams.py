@@ -110,7 +110,7 @@ if __name__ == "__main__":
     base_table_name = 'teams'
     schema = 'bronze'
     primary_key = ['id', 'season']
-    start_season = 2015
+    start_season = 2010
     end_season = datetime.datetime.today().year
     
     # Test DB connection before starting extraction

@@ -45,3 +45,8 @@ models:
         # If return_date can be NULL, treat it as open-ended:
         upper_bound_column: "coalesce(return_date, '9999-12-31')"
         partition_by: person_id
+  - name: stg_projections
+    description: 'projections from bronze.projections'
+    columns:
+      - name: 'person_id'
+        tests: [not_null]

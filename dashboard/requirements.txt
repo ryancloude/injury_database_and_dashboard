@@ -1,0 +1,6 @@
+streamlit
+matplotlib
+pandas
+plotly
+sqlalchemy
+psycopg[binary]
