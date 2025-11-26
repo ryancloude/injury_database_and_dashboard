@@ -2,8 +2,7 @@ import os
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
-import plotly.express as px  # optional, for future plots if you want
-
+import plotly.express as px
 st.set_page_config(page_title="Player Injuries", layout="wide")
 
 # ----------------- Connections & caching -----------------

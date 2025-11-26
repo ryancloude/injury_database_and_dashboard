@@ -3,4 +3,4 @@ matplotlib
 pandas
 plotly
 sqlalchemy
-psycopg[binary]
+psycopg2-binary
