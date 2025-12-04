@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, text
 import os
 import pandas as pd
 from bronze_statcast import fast_copy_from, alter_table, ensure_bronze_tables_from_df, \
-merge_staging_into_target, truncate_staging, get_table_columns_and_types, infer_and_cast_dtypes_psql
+merge_staging_into_target, truncate_staging, get_table_columns_and_types, infer_and_cast_dtypes_psql, get_baseball_engine
 import datetime
 
 def get_teams_data(primary_keys: list, start_season:int, end_season:int):
@@ -104,8 +104,7 @@ def create_teams(engine, base: str, schema: str, primary_keys: list, start_seaso
 
 if __name__ == "__main__":
     # Load PostgreSQL connection string from environment variable
-    BASEBALL_URL = os.environ['BASEBALL_URL']
-    engine = create_engine(BASEBALL_URL)
+    engine = get_baseball_engine()
 
     base_table_name = 'teams'
     schema = 'bronze'

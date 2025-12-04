@@ -12,7 +12,7 @@ Responsibilities
 
 import pandas as pd
 import os
-from bronze_statcast import fast_copy_from, ensure_bronze_tables_from_df,  truncate_staging, merge_staging_into_target
+from bronze_statcast import fast_copy_from, ensure_bronze_tables_from_df,  truncate_staging, merge_staging_into_target, get_baseball_engine
 from sqlalchemy import create_engine, text
 import datetime
 
@@ -161,8 +161,7 @@ def create_projections_table(start_year, end_year, path, primary_keys, schema, b
 
 if __name__ == "__main__":
     # Load PostgreSQL connection string from environment (docker-compose/.env)
-    BASEBALL_URL = os.environ["BASEBALL_URL"]
-    engine = create_engine(BASEBALL_URL)
+    engine = get_baseball_engine()
 
     # Define the season window and local CSV path
     start_year = 2010

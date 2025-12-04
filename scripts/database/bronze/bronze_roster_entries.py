@@ -4,7 +4,7 @@ from datetime import timedelta
 import pandas as pd
 from sqlalchemy import create_engine, text, inspect
 import requests
-from bronze_statcast import ensure_bronze_tables_from_df, truncate_staging, fast_copy_from, merge_staging_into_target
+from bronze_statcast import ensure_bronze_tables_from_df, truncate_staging, fast_copy_from, merge_staging_into_target, get_baseball_engine
 
 
 def get_roster_entries(players, teams, primary_keys):
@@ -73,8 +73,7 @@ def create_roster_entries(players, teams, chunk_size, base, schema, engine, prim
 
 
 if __name__ == "__main__":
-    BASEBALL_URL = os.environ["BASEBALL_URL"]
-    engine = create_engine(BASEBALL_URL)
+    engine = get_baseball_engine()
     try:
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version();"))

@@ -7,11 +7,43 @@ result to the silver database schema.
 
 import os
 import re
-
 import pandas as pd
 import spacy
 from sqlalchemy import create_engine, text
 from unidecode import unidecode
+
+def get_baseball_engine():
+    """
+    Construct a SQLAlchemy engine for the baseball database based on APP_ENV.
+
+    Behavior
+    - Reads APP_ENV from the environment ("local" by default).
+    - For APP_ENV="aws", uses AWS_PG_DSN (RDS connection string).
+    - For any other value (including "local"), uses LOCAL_PG_DSN.
+    - Raises a clear error if the chosen DSN is missing.
+
+    Environment variables (expected)
+    - APP_ENV: "local" or "aws" (optional, defaults to "local").
+    - LOCAL_PG_DSN: postgresql DSN for the local Postgres baseball DB.
+    - AWS_PG_DSN: postgresql DSN for the RDS baseball DB (with sslmode if needed).
+
+    Returns:
+    SQLAlchemy Engine: Engine connected to the selected baseball database.
+    """
+    app_env = os.getenv("APP_ENV", "local")
+
+    # Choose DSN based on the current environment
+    if app_env == "aws":
+        dsn = os.getenv("AWS_PG_DSN")
+    else:
+        dsn = os.getenv("LOCAL_PG_DSN")
+
+    # Fail fast if the DSN isn't configured for this environment
+    if not dsn:
+        raise RuntimeError(f"No DSN configured for APP_ENV={app_env}")
+
+    # Use pool_pre_ping to avoid stale connections in long-running processes
+    return create_engine(dsn, pool_pre_ping=True)
 
 
 def get_il_placements(transactions):
@@ -744,8 +776,8 @@ def create_il_placements(transactions, mlb_teams, mlb_players, engine):
 
 
 if __name__ == "__main__":
-    BASEBALL_URL = os.environ["BASEBALL_URL"]
-    engine = create_engine(BASEBALL_URL)
+    # Load PostgreSQL connection string from environment variable
+    engine = get_baseball_engine()
     try:
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version();"))

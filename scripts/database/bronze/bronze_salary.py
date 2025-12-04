@@ -19,6 +19,7 @@ import time
 import os
 import datetime
 import unicodedata
+from bronze_statcast import get_baseball_engine
 
 # I reuse the bronze I/O helpers I wrote for Statcast to stage/merge data efficiently.
 from bronze_statcast import fast_copy_from, ensure_bronze_tables_from_df,  truncate_staging, merge_staging_into_target
@@ -428,8 +429,7 @@ def create_salary_table(
 
 if __name__ == "__main__":
     # I load the PostgreSQL connection string from the environment (docker-compose/.env).
-    BASEBALL_URL = os.environ["BASEBALL_URL"]
-    engine = create_engine(BASEBALL_URL)
+    engine = get_baseball_engine()
 
     # I define the scrape window.
     start_year = 2010

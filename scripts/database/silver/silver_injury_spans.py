@@ -11,6 +11,7 @@ import os
 from datetime import timedelta
 import pandas as pd
 from sqlalchemy import create_engine, text, inspect
+from silver_il_placements import get_baseball_engine
 
 
 def get_activations(il_placements, transactions, season_dates, teams):
@@ -392,8 +393,8 @@ def create_silver_injury_spans(il_placements, transactions, season_dates, teams,
 
 
 if __name__ == "__main__":
-    BASEBALL_URL = os.environ["BASEBALL_URL"]
-    engine = create_engine(BASEBALL_URL)
+    # Load PostgreSQL connection string from environment variable
+    engine = get_baseball_engine()
     try:
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version();"))

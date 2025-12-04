@@ -13,7 +13,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from bronze_statcast import get_start_date, get_date_chunks, fast_copy_from, \
     alter_table, ensure_bronze_tables_from_df, merge_staging_into_target, truncate_staging, get_table_columns_and_types,\
-    infer_and_cast_dtypes_psql
+    infer_and_cast_dtypes_psql, get_baseball_engine
 from tqdm import tqdm
 import time
 
@@ -112,8 +112,7 @@ def create_games(start_date: datetime.date, end_date:datetime.date, chunk_size:i
 
 if __name__ == "__main__":
     # Load PostgreSQL connection string from environment variable
-    BASEBALL_URL = os.environ['BASEBALL_URL']
-    engine = create_engine(BASEBALL_URL)
+    engine = get_baseball_engine()
 
     base_table_name = 'games'
     schema = 'bronze'

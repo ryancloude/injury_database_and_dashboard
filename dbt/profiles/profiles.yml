@@ -1,11 +1,24 @@
-mlb:                        # <-- matches dbt_project.yml:profile
-  target: dev
+mlb:                           # <-- matches dbt_project.yml: profile: "mlb"
+  target: local                # default target when you just run `dbt run`
   outputs:
-    dev:
+
+    # -------- LOCAL: Docker Postgres --------
+    local:
       type: postgres
-      host: db
-      user: "{{ env_var('POSTGRES_USER') }}"
-      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      host: db                 # Docker service name, like you had before
+      user: "{{ env_var('LOCAL_PG_USER') }}"
+      password: "{{ env_var('LOCAL_PG_PASSWORD') }}"
+      port: 5432
+      dbname: baseball
+      schema: analytics        # or whatever schema you want as default
+      threads: 4
+
+    # -------- AWS: RDS Postgres --------
+    aws:
+      type: postgres
+      host: "{{ env_var('AWS_PG_HOST') }}"      # e.g. your RDS endpoint
+      user: "{{ env_var('AWS_PG_USER') }}"
+      password: "{{ env_var('AWS_PG_PASSWORD') }}"
       port: 5432
       dbname: baseball
       schema: analytics

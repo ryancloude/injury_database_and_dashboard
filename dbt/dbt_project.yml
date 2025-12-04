@@ -9,7 +9,6 @@ seed-paths:  ["seeds"]
 macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
-
 clean-targets: ["target", "dbt_packages"]
 
 seeds:
@@ -21,17 +20,18 @@ seeds:
   +post-hook:
     - "alter table {{ this }} add primary key (season)"
 
-
-
 models:
   pitcher_injury:
     +materialized: view
+
     bronze:
       +schema: bronze
       +materialized: table
+
     silver:
       +schema: silver
       +materialized: table
+
     gold:
       +schema: gold
       +materialized: table

@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 import warnings
 import os
 from bronze_statcast import fast_copy_from, alter_table, merge_staging_into_target, truncate_staging,\
-      get_table_columns_and_types, infer_and_cast_dtypes_psql
+      get_table_columns_and_types, infer_and_cast_dtypes_psql, get_baseball_engine
 
 def get_missing_games_dates(engine):
     """Return dates of finalized games that have no rows in bronze.statcast.
@@ -68,8 +68,7 @@ def get_missing_statcast_games(dates: list, engine, base: str, schema: str, prim
 
 if __name__ == "__main__":
     # Load PostgreSQL connection string from environment variable
-    BASEBALL_URL = os.environ['BASEBALL_URL']
-    engine = create_engine(BASEBALL_URL)
+    engine = get_baseball_engine()
 
     base_table_name = 'statcast'
     schema = 'bronze'

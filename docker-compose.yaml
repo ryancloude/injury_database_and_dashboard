@@ -1,32 +1,41 @@
+# docker-compose.yaml
+
 x-airflow-common: &airflow-common
   image: apache/airflow:2.8.1-python3.9
   env_file:
     - .env
   environment:
-    &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_URL}
-    BASEBALL_URL: ${BASEBALL_URL}
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
     PIP_ADDITIONAL_REQUIREMENTS: |
       apache-airflow-providers-docker
+    # Expose APP_ENV inside Airflow containers; default to "local" if not set
+    APP_ENV: ${APP_ENV:-local}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
+    - /var/run/docker.sock:/var/run/docker.sock
+  user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     - db
   networks:
     - airflow_net
 
 services:
+  # ---------------------------------------------------------------------------
+  # Local Postgres for Airflow metadata (and optional local baseball sandbox)
+  # ---------------------------------------------------------------------------
   db:
     image: postgres:15
     container_name: db
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${LOCAL_PG_USER}
+      POSTGRES_PASSWORD: ${LOCAL_PG_PASSWORD}
       POSTGRES_DB: airflow
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -34,93 +43,107 @@ services:
       - "5432:5432"
     networks:
       - airflow_net
-# PostgreSQL database container for storing Statcast data
-  dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile.dashboard
-    container_name: dashboard
-    depends_on:
-      - db
-    env_file:
-      - .env
-    environment:
-      # Prefer a read-only DSN; do not reuse your writer creds.
-      READONLY_PG_DSN: ${READONLY_PG_DSN}
-      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
-    ports:
-      - "8501:8501"
-    networks:
-      - airflow_net
-    restart: unless-stopped
-    
+
+  # ---------------------------------------------------------------------------
+  # Airflow init (run once to init DB and create admin user)
+  # ---------------------------------------------------------------------------
   airflow-init:
     <<: *airflow-common
-    entrypoint: /bin/bash
-    command: -c "airflow db migrate && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
-    depends_on:
-      - db # Ensure database is up before starting Airflow
+    container_name: airflow-init
+    entrypoint: ["bash", "-c"]
+    command: >
+      airflow db init &&
+      airflow users create
+        --username admin
+        --password admin
+        --firstname Admin
+        --lastname User
+        --role Admin
+        --email admin@example.com
+    restart: "no"
 
+  # ---------------------------------------------------------------------------
+  # Airflow webserver
+  # ---------------------------------------------------------------------------
   airflow-webserver:
     <<: *airflow-common
+    container_name: airflow-webserver
+    command: webserver
     ports:
       - "8080:8080"
-    command: webserver
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
-      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Airflow scheduler
+  # ---------------------------------------------------------------------------
   airflow-scheduler:
     <<: *airflow-common
+    container_name: airflow-scheduler
     command: scheduler
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
-      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Pipeline app (your Python scripts, run via docker exec)
+  # ---------------------------------------------------------------------------
   pipeline-app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: pipeline-app:latest
     container_name: pipeline-app
-    depends_on:
-      - db
     env_file:
       - .env
+    depends_on:
+      - db
     volumes:
       - ./scripts:/app/scripts
       - ./projections:/app/projections
     networks:
       - airflow_net
+    # Keep container alive so you can exec into it
     command: tail -f /dev/null
-  dbt:
-    image: ghcr.io/dbt-labs/dbt-postgres:1.9.latest
-    container_name: dbt
+
+  # ---------------------------------------------------------------------------
+  # Streamlit dashboard
+  # ---------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: dashboard
+    env_file:
+      - .env
+    environment:
+      # DSNs handled in code via APP_ENV; this is just a Streamlit setting
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
     depends_on:
       - db
+    ports:
+      - "8501:8501"
+    networks:
+      - airflow_net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # dbt container
+  # ---------------------------------------------------------------------------
+  dbt:
+    image: ${DBT_IMAGE:-ghcr.io/dbt-labs/dbt-postgres:1.9.latest}
+    container_name: dbt
     env_file:
       - .env
     environment:
       DBT_PROFILES_DIR: /root/.dbt
-      # Pass through Postgres creds from .env
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # Optional: tweak threads, etc., via env or profiles.yml
     volumes:
-      - ./dbt:/usr/app               # your dbt project
-      - ./dbt/profiles:/root/.dbt    # profiles.yml goes here
+      - ./dbt:/usr/app
+      - ./dbt/profiles:/root/.dbt
     working_dir: /usr/app
     networks:
       - airflow_net
 
 volumes:
   postgres_data:
-  # Persistent volume for PostgreSQL data
 
 networks:
   airflow_net:
+    name: airflow_airflow_net
     driver: bridge
