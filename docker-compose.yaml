@@ -1,7 +1,10 @@
-# docker-compose.yaml
+version: "3.8"
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.8.1-python3.9
+  build:
+    context: ./airflow
+    dockerfile: Dockerfile.airflow
+  image: injury_airflow:latest
   env_file:
     - .env
   environment:
@@ -11,7 +14,6 @@ x-airflow-common: &airflow-common
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
     PIP_ADDITIONAL_REQUIREMENTS: |
       apache-airflow-providers-docker
-    # Expose APP_ENV inside Airflow containers; default to "local" if not set
     APP_ENV: ${APP_ENV:-local}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
@@ -83,23 +85,22 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Pipeline app (your Python scripts, run via docker exec)
+  # Pipeline container (bronze/silver ETL code)
   # ---------------------------------------------------------------------------
-  pipeline-app:
+  pipeline:
     build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: pipeline-app
+      context: ./pipeline
+      dockerfile: Dockerfile.pipeline
+    image: injury_pipeline:latest
+    container_name: pipeline
     env_file:
       - .env
     depends_on:
       - db
     volumes:
-      - ./scripts:/app/scripts
-      - ./projections:/app/projections
+      - ./pipeline:/app
     networks:
       - airflow_net
-    # Keep container alive so you can exec into it
     command: tail -f /dev/null
 
   # ---------------------------------------------------------------------------
@@ -113,7 +114,6 @@ services:
     env_file:
       - .env
     environment:
-      # DSNs handled in code via APP_ENV; this is just a Streamlit setting
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
     depends_on:
       - db
@@ -127,7 +127,10 @@ services:
   # dbt container
   # ---------------------------------------------------------------------------
   dbt:
-    image: ${DBT_IMAGE:-ghcr.io/dbt-labs/dbt-postgres:1.9.latest}
+    build:
+      context: ./dbt
+      dockerfile: Dockerfile.dbt
+    image: injury_dbt:latest
     container_name: dbt
     env_file:
       - .env

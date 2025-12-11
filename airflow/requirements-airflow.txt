@@ -1,0 +1,6 @@
+SQLAlchemy
+psycopg2-binary
+PyYAML
+requests
+apache-airflow-providers-docker
+apache-airflow-providers-amazon

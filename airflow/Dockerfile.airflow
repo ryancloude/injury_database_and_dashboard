@@ -1,0 +1,15 @@
+# Base Airflow image (same version used locally)
+FROM apache/airflow:2.8.1-python3.9
+
+# Disable example DAGs and improve log behavior
+ENV AIRFLOW__CORE__LOAD_EXAMPLES=False \
+    PYTHONUNBUFFERED=1
+
+# Install Python dependencies required by DAG code
+COPY requirements-airflow.txt /requirements-airflow.txt
+RUN pip install --no-cache-dir -r /requirements-airflow.txt
+
+# Bake DAGs and plugins into the image for ECS use
+# (local docker-compose can still mount over these paths)
+COPY dags/ /opt/airflow/dags/
+COPY plugins/ /opt/airflow/plugins/

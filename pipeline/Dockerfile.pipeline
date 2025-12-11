@@ -1,0 +1,16 @@
+# Base pipeline image for bronze/silver ETL code
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install pipeline dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install spaCy model if used by pipeline code
+RUN python -m spacy download en_core_web_sm
+
+# Copy bronze/silver pipeline modules
+COPY bronze/ ./bronze
+COPY silver/ ./silver
+COPY projections/ ./projections

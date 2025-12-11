@@ -440,69 +440,117 @@ Under the hood, this dashboard is powered by a modern data engineering and analy
 
 #### Data storage
 
-- **PostgreSQL**  
-  All data lives in a PostgreSQL database with separate schemas for different stages of the pipeline:
-  - Raw source tables from the MLB Stats API, Cot’s, and FanGraphs.
-  - Cleaned and standardized tables for players, teams, games, rosters, and IL episodes.
-  - Final “gold” tables such as `gold.team_season_injuries` that drive the dashboard.
+- **PostgreSQL on AWS RDS (production)**  
+  In production, all data lives in a PostgreSQL database running on **Amazon RDS**. The database is organized into schemas that roughly follow a bronze / silver / gold pattern:
 
-This layout loosely follows a bronze/silver/gold pattern to keep raw data, cleaned data, and analytical outputs clearly separated.
+  - **Bronze:** Raw source tables from the MLB Stats API, Cot’s Contracts, and FanGraphs ZiPS.
+  - **Silver:** Cleaned and standardized tables for players, teams, games, rosters, and individual IL episodes.
+  - **Gold:** Final analytical tables (for example, `gold.team_season_injuries`) that power this dashboard.
+
+- **PostgreSQL in Docker (local development)**  
+  For local development, the same schemas and tables run in a Postgres container via Docker Compose. The code uses an `APP_ENV` environment variable (`local` vs `aws`) to switch between the local and RDS databases without changing SQL.
 
 ---
 
 #### Data ingestion and transformations
 
-- **Python**  
-  Python scripts handle:
+- **Python ingestion pipeline (containerized)**  
+  A set of Python scripts (for example, the `bronze_*.py` scripts) handle:
+
   - Calling the MLB Stats API (transactions, players, rosters, games, Statcast).
-  - Loading salary data from Cot’s Contracts and ZiPS projections from FanGraphs.
+  - Loading salary data from Cot’s Contracts.
+  - Loading preseason ZiPS projections from FanGraphs.
+  - Writing the results into the bronze layer in PostgreSQL.
+
+  These scripts are packaged into a **Docker image** (the “pipeline” image), which is:
+
+  - Run locally via Docker Compose for development and testing.
+  - Run in production on **AWS ECS Fargate** as on-demand tasks triggered by Airflow.
 
 - **dbt (data build tool)**  
-  SQL and transformation logic are organized as dbt models, which:
-  - Build and maintain the cleaned (silver) and aggregated (gold) tables.
-  - Implement incremental updates so only new or changed data is processed.
-  - Keep transformation logic versioned and testable.
+  Downstream transformations are defined as a **dbt project**, which:
+
+  - Builds and maintains the silver and gold tables.
+  - Uses incremental models so only new or changed data is processed.
+  - Keeps all SQL logic versioned and testable.
+
+  The dbt project is also containerized (a “dbt” image) and:
+
+  - Runs locally via `docker compose` (or directly with dbt).
+  - Runs in production as an ECS Fargate task that Airflow triggers after the bronze ingestion completes.
 
 ---
 
 #### Orchestration and automation
 
-- **Apache Airflow**  
-  Airflow DAGs schedule and orchestrate:
-  - Daily refreshes of MLB data (transactions, rosters, games, Statcast).
-  - Yearly loads of teams metadata, salary data, and ZiPS projections.
-  - dbt runs that rebuild downstream tables after new data arrives.
+- **Apache Airflow (local + AWS)**  
 
-This makes the pipeline reproducible and keeps the database in sync with the latest public data.
+  Airflow coordinates the entire pipeline:
+
+  - **DAGs** schedule and orchestrate:
+    - Daily refreshes of MLB data (transactions, rosters, games, Statcast).
+    - Yearly loads of teams, salary, and ZiPS projection data.
+    - dbt runs for the silver and gold layers.
+
+  There are two environments:
+
+  - **Local development:**  
+    Airflow runs in Docker (webserver + scheduler) using the local Postgres instance for both metadata and baseball data. Tasks can run either as local Docker containers (`DockerOperator`) or as ECS tasks (via `EcsRunTaskOperator`) when testing the cloud workflow.
+
+  - **Production on AWS ECS:**  
+    Airflow’s webserver and scheduler run as long-lived **ECS services** using Docker images stored in **Amazon ECR** and an Airflow metadata database on RDS.  
+    Heavy work (bronze ingestion and dbt runs) is offloaded to short-lived ECS Fargate tasks using `EcsRunTaskOperator`, which run the pipeline and dbt images against the RDS baseball database.
 
 ---
 
 #### Containerization and deployment
 
-- **Docker**  
-  The database, Airflow, transformation code, and dashboard all run in Docker containers.  
-  This ensures:
-  - A consistent environment across machines.
-  - Easy local development and deployment.
+- **Docker + Amazon ECR + AWS ECS Fargate**
+
+  - All components (pipeline, dbt, Airflow) are packaged as Docker images.
+  - Images are pushed to **Amazon ECR** for use in the AWS environment.
+  - **AWS ECS Fargate** runs:
+    - The long-running Airflow webserver and scheduler services.
+    - On-demand tasks for the pipeline (bronze ingestion) and dbt (silver/gold transformations).
+
+  This keeps local and cloud environments aligned: the same images and code paths run in Docker on your machine and in ECS in production, with only configuration and environment variables (such as `APP_ENV`) changing between them.
 
 ---
 
 #### Dashboard and presentation
 
-- **Streamlit**  
-  The interactive dashboard is built with Streamlit, which:
-  - Connects directly to the PostgreSQL “gold” tables.
-  - Provides filters, charts, and tables for exploring team–season injury metrics.
-  - Renders this About page alongside the analytical views.
+- **Streamlit dashboard (Streamlit Community Cloud)**  
+  The interactive dashboard is built with **Streamlit** and deployed to **Streamlit Community Cloud**. It:
+
+  - Connects to the **gold** schema in the RDS database using a **read-only** connection string.
+  - Powers the team and player injury pages, charts, and tables.
+  - Hosts this About page alongside the analytical views.
+
+- **Local dashboard development**  
+  For local development, the same Streamlit app can be run against the local Postgres instance simply by changing environment variables (for example, pointing `READONLY_PG_DSN` at the local database instead of RDS).
 
 ---
 
-#### Version control
+#### Configuration, environments, and version control
+
+- **Environment management**  
+  Configuration is handled via environment variables, typically loaded from a `.env` file in local development and set in ECS task definitions / Streamlit secrets in production.  
+  A few important variables:
+
+  - `APP_ENV` to switch between `local` and `aws`.
+  - `LOCAL_PG_DSN` / `AWS_PG_DSN` for the main database.
+  - Read-only DSNs for the dashboard.
+  - AWS region and ECS/RDS settings in the AWS environment.
 
 - **Git and GitHub**  
-  All code for data ingestion, transformations, and the dashboard (including scripts such as `il_placements.py`) is version-controlled in Git and hosted on GitHub.
+  All code for ingestion, transformations, orchestration, and the dashboard lives in a single GitHub repository. This includes:
 
-This setup makes it possible to track changes over time, review logic, and evolve the pipeline as new data or ideas become available.
+  - Pipeline scripts (bronze ingestion).
+  - dbt models (silver/gold).
+  - Airflow DAGs.
+  - Streamlit dashboard pages.
+
+  This makes it straightforward to review changes, track the evolution of the pipeline, and keep the local and cloud setups in sync.
 """
 contact_markdown = """
 ### Contact

@@ -2,62 +2,168 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta
-from pendulum import timezone
 
+from pendulum import timezone
 from airflow import DAG
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.task_group import TaskGroup
 from airflow.utils.trigger_rule import TriggerRule
 
 from airflow.providers.docker.operators.docker import DockerOperator
-from docker.types import Mount
+from airflow.providers.amazon.aws.operators.ecs import EcsRunTaskOperator
 
 LOCAL_TZ = timezone("US/Eastern")
 
-# ──────────────── Environment + host mounts ─────────────────────────────
 DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "airflow_airflow_net")
 
-HOST_SCRIPTS_DIR = os.environ["HOST_SCRIPTS_DIR"]
-HOST_DBT_DIR = os.environ["HOST_DBT_DIR"]
-HOST_DBT_PROFILES = os.environ["HOST_DBT_PROFILES"]
+# Images built locally and pushed to ECR for AWS
+PIPELINE_IMAGE = os.getenv("PIPELINE_IMAGE", "injury_pipeline:latest")
+DBT_IMAGE = os.getenv("DBT_IMAGE", "injury_dbt:latest")
 
-PIPELINE_APP_IMAGE = os.getenv("PIPELINE_APP_IMAGE", "pipeline-app:latest")
-DBT_IMAGE = os.getenv("DBT_IMAGE", "ghcr.io/dbt-labs/dbt-postgres:1.9.latest")
-
-# Environment-driven DB selection (matches get_baseball_engine)
 APP_ENV = os.getenv("APP_ENV", "local")
 LOCAL_PG_DSN = os.getenv("LOCAL_PG_DSN", "")
 AWS_PG_DSN = os.getenv("AWS_PG_DSN", "")
 
-# dbt profile env vars
 LOCAL_PG_USER = os.getenv("LOCAL_PG_USER", "")
 LOCAL_PG_PASSWORD = os.getenv("LOCAL_PG_PASSWORD", "")
 AWS_PG_HOST = os.getenv("AWS_PG_HOST", "")
 AWS_PG_USER = os.getenv("AWS_PG_USER", "")
 AWS_PG_PASSWORD = os.getenv("AWS_PG_PASSWORD", "")
 
-# ──────────────── Reusable mounts ─────────────────────────────
-scripts_mount = [
-    Mount(target="/app/scripts", source=HOST_SCRIPTS_DIR, type="bind")
-]
+IS_LOCAL = APP_ENV == "local"
 
-dbt_mounts = [
-    Mount(target="/usr/app", source=HOST_DBT_DIR, type="bind", read_only=False),
-    Mount(target="/root/.dbt", source=HOST_DBT_PROFILES, type="bind", read_only=True),
-]
+# ECS config (for when APP_ENV != "local")
+ECS_CLUSTER = os.getenv("ECS_CLUSTER", "")
+ECS_PIPELINE_TASK_DEF = os.getenv("ECS_PIPELINE_TASK_DEF", "")
+ECS_PIPELINE_CONTAINER_NAME = os.getenv("ECS_PIPELINE_CONTAINER_NAME", "pipeline")
 
-# ──────────────── DAG config ─────────────────────────────
+ECS_DBT_TASK_DEF = os.getenv("ECS_DBT_TASK_DEF", "")
+ECS_DBT_CONTAINER_NAME = os.getenv("ECS_DBT_CONTAINER_NAME", "dbt")
+
+ECS_SUBNETS = os.getenv("ECS_SUBNETS", "")          # comma-separated
+ECS_SECURITY_GROUPS = os.getenv("ECS_SECURITY_GROUPS", "")  # comma-separated
+
+
+def _base_env() -> dict[str, str]:
+    return {
+        "APP_ENV": APP_ENV,
+        "LOCAL_PG_DSN": LOCAL_PG_DSN,
+        "AWS_PG_DSN": AWS_PG_DSN,
+    }
+
+
+def _dbt_env() -> dict[str, str]:
+    env = _base_env().copy()
+    env.update(
+        {
+            "LOCAL_PG_USER": LOCAL_PG_USER,
+            "LOCAL_PG_PASSWORD": LOCAL_PG_PASSWORD,
+            "AWS_PG_HOST": AWS_PG_HOST,
+            "AWS_PG_USER": AWS_PG_USER,
+            "AWS_PG_PASSWORD": AWS_PG_PASSWORD,
+            "PYTHONUNBUFFERED": "1",
+        }
+    )
+    return env
+
+
+def _ecs_network_conf() -> dict:
+    subnets = [s for s in ECS_SUBNETS.split(",") if s]
+    security_groups = [g for g in ECS_SECURITY_GROUPS.split(",") if g]
+    return {
+        "awsvpcConfiguration": {
+            "subnets": subnets,
+            "securityGroups": security_groups,
+            "assignPublicIp": "ENABLED",
+        }
+    }
+
+
+def make_pipeline_task(task_id: str, script_path: str) -> DockerOperator | EcsRunTaskOperator:
+    env = _base_env()
+
+    if IS_LOCAL:
+        return DockerOperator(
+            task_id=task_id,
+            image=PIPELINE_IMAGE,
+            command=f"python {script_path}",
+            docker_url="unix://var/run/docker.sock",
+            api_version="auto",
+            network_mode=DOCKER_NETWORK,
+            auto_remove=True,
+            mount_tmp_dir=False,
+            environment=env,
+        )
+    else:
+        return EcsRunTaskOperator(
+            task_id=task_id,
+            cluster=ECS_CLUSTER,
+            task_definition=ECS_PIPELINE_TASK_DEF,
+            launch_type="FARGATE",
+            overrides={
+                "containerOverrides": [
+                    {
+                        "name": ECS_PIPELINE_CONTAINER_NAME,
+                        "command": ["python", script_path],
+                        "environment": [
+                            {"name": k, "value": v} for k, v in env.items()
+                        ],
+                    }
+                ],
+            },
+            network_configuration=_ecs_network_conf(),
+        )
+
+
+def make_dbt_task(task_id: str, select_path: str) -> DockerOperator | EcsRunTaskOperator:
+    env = _dbt_env()
+    dbt_cmd = f"run --target {APP_ENV} --select +path:{select_path}"
+
+    if IS_LOCAL:
+        return DockerOperator(
+            task_id=task_id,
+            image=DBT_IMAGE,
+            command=dbt_cmd,
+            docker_url="unix://var/run/docker.sock",
+            api_version="auto",
+            network_mode=DOCKER_NETWORK,
+            auto_remove=True,
+            working_dir="/usr/app",
+            mount_tmp_dir=False,
+            environment=env,
+        )
+    else:
+        return EcsRunTaskOperator(
+            task_id=task_id,
+            cluster=ECS_CLUSTER,
+            task_definition=ECS_DBT_TASK_DEF,
+            launch_type="FARGATE",
+            overrides={
+                "containerOverrides": [
+                    {
+                        "name": ECS_DBT_CONTAINER_NAME,
+                        "command": dbt_cmd.split(),
+                        "environment": [
+                            {"name": k, "value": v} for k, v in env.items()
+                        ],
+                    }
+                ],
+            },
+            network_configuration=_ecs_network_conf(),
+        )
+
+
 default_args = {"execution_timeout": timedelta(hours=2)}
 
 with DAG(
     dag_id="pipeline",
-    description="bronze → dbt silver → dbt gold (Python + dbt in Docker)",
+    description="bronze → dbt silver → dbt gold (Python + dbt, Docker/ECS switch)",
     start_date=datetime(2025, 9, 1, tzinfo=LOCAL_TZ),
     schedule="0 6 * * *",
     catchup=False,
     default_args=default_args,
     max_active_runs=1,
-    tags=["bronze", "dbt", "dockeroperator"],
+    tags=["bronze", "dbt", "dockeroperator", "ecs"],
 ) as dag:
 
     start = EmptyOperator(task_id="start")
@@ -66,93 +172,31 @@ with DAG(
     #                           BRONZE GROUP
     # ======================================================================
     with TaskGroup(group_id="bronze") as bronze:
-
-        bronze_games = DockerOperator(
+        bronze_games = make_pipeline_task(
             task_id="games",
-            image=PIPELINE_APP_IMAGE,
-            command="python /app/scripts/database/bronze/bronze_games.py",
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NETWORK,
-            auto_remove=True,
-            mounts=scripts_mount,
-            mount_tmp_dir=False,
-            environment={
-                "APP_ENV": APP_ENV,
-                "LOCAL_PG_DSN": LOCAL_PG_DSN,
-                "AWS_PG_DSN": AWS_PG_DSN,
-            },
+            script_path="/app/bronze/bronze_games.py",
         )
 
-        bronze_players = DockerOperator(
+        bronze_players = make_pipeline_task(
             task_id="players",
-            image=PIPELINE_APP_IMAGE,
-            command="python /app/scripts/database/bronze/bronze_players.py",
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NETWORK,
-            auto_remove=True,
-            mounts=scripts_mount,
-            mount_tmp_dir=False,
-            environment={
-                "APP_ENV": APP_ENV,
-                "LOCAL_PG_DSN": LOCAL_PG_DSN,
-                "AWS_PG_DSN": AWS_PG_DSN,
-            },
+            script_path="/app/bronze/bronze_players.py",
         )
 
-        bronze_statcast = DockerOperator(
+        bronze_statcast = make_pipeline_task(
             task_id="statcast",
-            image=PIPELINE_APP_IMAGE,
-            command="python /app/scripts/database/bronze/bronze_statcast.py",
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NETWORK,
-            auto_remove=True,
-            mounts=scripts_mount,
-            mount_tmp_dir=False,
-            environment={
-                "APP_ENV": APP_ENV,
-                "LOCAL_PG_DSN": LOCAL_PG_DSN,
-                "AWS_PG_DSN": AWS_PG_DSN,
-            },
+            script_path="/app/bronze/bronze_statcast.py",
         )
 
-        bronze_transactions = DockerOperator(
+        bronze_transactions = make_pipeline_task(
             task_id="transactions",
-            image=PIPELINE_APP_IMAGE,
-            command="python /app/scripts/database/bronze/bronze_transactions.py",
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NETWORK,
-            auto_remove=True,
-            mounts=scripts_mount,
-            mount_tmp_dir=False,
-            environment={
-                "APP_ENV": APP_ENV,
-                "LOCAL_PG_DSN": LOCAL_PG_DSN,
-                "AWS_PG_DSN": AWS_PG_DSN,
-            },
+            script_path="/app/bronze/bronze_transactions.py",
         )
 
-        bronze_roster_entries = DockerOperator(
+        bronze_roster_entries = make_pipeline_task(
             task_id="roster_entries",
-            image=PIPELINE_APP_IMAGE,
-            command="python /app/scripts/database/bronze/bronze_roster_entries.py",
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NETWORK,
-            auto_remove=True,
-            mounts=scripts_mount,
-            mount_tmp_dir=False,
-            environment={
-                "APP_ENV": APP_ENV,
-                "LOCAL_PG_DSN": LOCAL_PG_DSN,
-                "AWS_PG_DSN": AWS_PG_DSN,
-            },
+            script_path="/app/bronze/bronze_roster_entries.py",
         )
 
-        # intra-group dependencies
         [bronze_players, bronze_transactions] >> bronze_roster_entries
 
     bronze_done = EmptyOperator(
@@ -163,96 +207,34 @@ with DAG(
     # ======================================================================
     #                         DBT SILVER
     # ======================================================================
-    dbt_silver = DockerOperator(
+    dbt_silver = make_dbt_task(
         task_id="dbt_run_silver",
-        image=DBT_IMAGE,
-        command=f"run --target {APP_ENV} --select +path:models/silver",
-        docker_url="unix://var/run/docker.sock",
-        api_version="auto",
-        network_mode=DOCKER_NETWORK,
-        auto_remove=True,
-        working_dir="/usr/app",
-        mounts=dbt_mounts,
-        mount_tmp_dir=False,
-        environment={
-            "PYTHONUNBUFFERED": "1",
-            # dbt profile env vars
-            "LOCAL_PG_USER": LOCAL_PG_USER,
-            "LOCAL_PG_PASSWORD": LOCAL_PG_PASSWORD,
-            "AWS_PG_HOST": AWS_PG_HOST,
-            "AWS_PG_USER": AWS_PG_USER,
-            "AWS_PG_PASSWORD": AWS_PG_PASSWORD,
-            "APP_ENV": APP_ENV,
-        },
+        select_path="models/silver",
     )
 
     # ======================================================================
     #                       SILVER PYTHON TASKS
     # ======================================================================
-    silver_il_placements = DockerOperator(
+    silver_il_placements = make_pipeline_task(
         task_id="silver_il_placements",
-        image=PIPELINE_APP_IMAGE,
-        command="python /app/scripts/database/silver/silver_il_placements.py",
-        docker_url="unix://var/run/docker.sock",
-        api_version="auto",
-        network_mode=DOCKER_NETWORK,
-        auto_remove=True,
-        mounts=scripts_mount,
-        mount_tmp_dir=False,
-        environment={
-            "APP_ENV": APP_ENV,
-            "LOCAL_PG_DSN": LOCAL_PG_DSN,
-            "AWS_PG_DSN": AWS_PG_DSN,
-        },
+        script_path="/app/silver/silver_il_placements.py",
     )
 
-    silver_injury = DockerOperator(
+    silver_injury = make_pipeline_task(
         task_id="silver_injury_spans",
-        image=PIPELINE_APP_IMAGE,
-        command="python /app/scripts/database/silver/silver_injury_spans.py",
-        docker_url="unix://var/run/docker.sock",
-        api_version="auto",
-        network_mode=DOCKER_NETWORK,
-        auto_remove=True,
-        mounts=scripts_mount,
-        mount_tmp_dir=False,
-        environment={
-            "APP_ENV": APP_ENV,
-            "LOCAL_PG_DSN": LOCAL_PG_DSN,
-            "AWS_PG_DSN": AWS_PG_DSN,
-        },
+        script_path="/app/silver/silver_injury_spans.py",
     )
 
     # ======================================================================
     #                           DBT GOLD
     # ======================================================================
-    dbt_gold = DockerOperator(
+    dbt_gold = make_dbt_task(
         task_id="dbt_run_gold",
-        image=DBT_IMAGE,
-        command=f"run --target {APP_ENV} --select +path:models/gold",
-        docker_url="unix://var/run/docker.sock",
-        api_version="auto",
-        network_mode=DOCKER_NETWORK,
-        auto_remove=True,
-        working_dir="/usr/app",
-        mounts=dbt_mounts,
-        mount_tmp_dir=False,
-        environment={
-            "PYTHONUNBUFFERED": "1",
-            "LOCAL_PG_USER": LOCAL_PG_USER,
-            "LOCAL_PG_PASSWORD": LOCAL_PG_PASSWORD,
-            "AWS_PG_HOST": AWS_PG_HOST,
-            "AWS_PG_USER": AWS_PG_USER,
-            "AWS_PG_PASSWORD": AWS_PG_PASSWORD,
-            "APP_ENV": APP_ENV,
-        },
+        select_path="models/gold",
     )
 
     end = EmptyOperator(task_id="end")
 
-    # ======================================================================
-    #                               GRAPH
-    # ======================================================================
     start >> bronze
     bronze >> bronze_done
     bronze_done >> dbt_silver >> silver_il_placements >> silver_injury >> dbt_gold >> end

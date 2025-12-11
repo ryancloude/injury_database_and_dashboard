@@ -15,11 +15,9 @@ env/
 # logs
 logs/
 
-# Docker volumes
+# Docker volumes / local PG data
 pgdata/
 */pgdata/
-
-# PostgreSQL data directories (if inside repo)
 *.db
 *.log
 
@@ -33,14 +31,12 @@ airflow/__pycache__/
 .vscode/
 *.swp
 .DS_Store
+.idea/
 
 # dbt artifacts
 target/
 dbt_packages/
-logs/
-dbt_modules/  
-.idea/
-.DS_Store
+dbt_modules/
 
-#projections csv
+# projections CSV
 projections/

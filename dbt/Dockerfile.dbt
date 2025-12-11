@@ -1,0 +1,10 @@
+# dbt image for running transformations inside ECS tasks or locally
+FROM ghcr.io/dbt-labs/dbt-postgres:latest
+
+WORKDIR /usr/app
+
+# Copy full dbt project into container
+COPY . /usr/app
+
+# Copy dbt profiles into expected directory
+COPY profiles/ /root/.dbt/
