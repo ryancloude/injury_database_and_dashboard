@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st # type: ignore
 
 st.set_page_config(page_title="About", layout="wide")
 
@@ -567,10 +567,10 @@ I’m always open to feedback, bug reports, and ideas for additional features or
 
 st.markdown(contents_markdown)
 
-with st.expander("What is this dashboard?", expanded=True):
+with st.expander("What is this dashboard?", expanded=False):
     st.markdown(what_is_this_markdown)
 
-with st.expander("Data sources", expanded=True):
+with st.expander("Data sources", expanded=False):
     st.markdown(data_sources_markdown)
 
 with st.expander("From raw data to dashboard", expanded=False):

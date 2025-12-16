@@ -1,8 +1,8 @@
 import os
 import pandas as pd
-import streamlit as st
+import streamlit as st # type: ignore
 from sqlalchemy import create_engine, text
-import plotly.express as px
+import plotly.express as px # type: ignore
 st.set_page_config(page_title="Player Injuries", layout="wide")
 
 # ----------------- Connections & caching -----------------
