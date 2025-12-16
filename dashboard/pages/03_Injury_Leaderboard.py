@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-import streamlit as st
+import streamlit as st # type: ignore
 from sqlalchemy import create_engine
 
 st.set_page_config(page_title="Injury Leaderboards", layout="wide")

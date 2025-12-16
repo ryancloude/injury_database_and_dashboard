@@ -28,6 +28,7 @@ base as (
     from salary
     join teams
     on lower(salary.team) = lower(teams.name)
+    where salary > 0
     group by person_id, season
 )
 
