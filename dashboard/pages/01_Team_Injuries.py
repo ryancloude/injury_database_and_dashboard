@@ -10,7 +10,7 @@ st.set_page_config(page_title="Team Injuries", layout="wide")
 # ----------------- Connections & caching -----------------
 @st.cache_resource
 def get_engine():
-    dsn = os.getenv("READONLY_PG_DSN") or st.secrets.get("READONLY_PG_DSN")
+    dsn = os.getenv("LOCAL_READONLY_PG_DSN") or st.secrets.get("READONLY_PG_DSN")
     if not dsn:
         st.stop()  # fail fast if no DSN
     return create_engine(dsn, pool_pre_ping=True)
@@ -280,7 +280,9 @@ with c1:
     pos_sel = st.multiselect("Position", positions_all, default=positions_all)
 
 with c2:
-    all_body_parts = st.checkbox("All body parts", value=True, key="team_all_body_parts")
+    # One-shot reset button instead of toggle checkbox
+    if st.button("Select all body parts", use_container_width=True):
+        st.session_state["team_bp_sel"] = body_parts_all
     bp_sel = st.multiselect(
         "Body Part (incl. secondary)",
         body_parts_all,
@@ -289,7 +291,9 @@ with c2:
     )
 
 with c3:
-    all_injury_types = st.checkbox("All injury types", value=True, key="team_all_injury_types")
+    # One-shot reset button instead of toggle checkbox
+    if st.button("Select all injury types", use_container_width=True):
+        st.session_state["team_it_sel"] = injury_types_all
     it_sel = st.multiselect(
         "Injury Type (incl. secondary)",
         injury_types_all,
@@ -307,15 +311,15 @@ mask = pd.Series(True, index=df_view.index)
 if positions_all and len(pos_sel) != len(positions_all) and "position" in df_view:
     mask &= df_view["position"].astype(str).isin(pos_sel)
 
-# Body parts with "select all"
-bp_active = body_parts_all if all_body_parts or not bp_sel else bp_sel
+# Body parts: if nothing selected, treat as "all"
+bp_active = bp_sel or body_parts_all
 if body_parts_all and len(bp_active) != len(body_parts_all):
     m1 = df_view["body_part"].astype(str).isin(bp_active) if "body_part" in df_view else False
     m2 = df_view["second_body_part"].astype(str).isin(bp_active) if "second_body_part" in df_view else False
     mask &= (m1 | m2)
 
-# Injury types with "select all"
-it_active = injury_types_all if all_injury_types or not it_sel else it_sel
+# Injury types: if nothing selected, treat as "all"
+it_active = it_sel or injury_types_all
 if injury_types_all and len(it_active) != len(injury_types_all):
     m1 = df_view["injury_type"].astype(str).isin(it_active) if "injury_type" in df_view else False
     m2 = df_view["second_injury_type"].astype(str).isin(it_active) if "second_injury_type" in df_view else False

@@ -8,7 +8,7 @@ st.set_page_config(page_title="Player Injuries", layout="wide")
 # ----------------- Connections & caching -----------------
 @st.cache_resource
 def get_engine():
-    dsn = os.getenv("READONLY_PG_DSN") or st.secrets.get("READONLY_PG_DSN")
+    dsn = os.getenv("LOCAL_READONLY_PG_DSN") or st.secrets.get("READONLY_PG_DSN")
     if not dsn:
         st.stop()
     return create_engine(dsn, pool_pre_ping=True)

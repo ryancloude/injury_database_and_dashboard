@@ -66,7 +66,7 @@ Your exact structure may differ slightly, but the project is organized roughly a
 ├── airflow/ or dags/     # Airflow DAGs (e.g., pipeline_dag.py, bronze_yearly.py)
 │   └── database/
 ├── dashboard/            # Streamlit app
-│   ├── Home.py
+│   ├── League_Injuries.py
 │   ├── pages/
 │   │   ├── 01_Team_Injuries.py
 │   │   ├── 02_Player_Injuries.py
@@ -74,7 +74,7 @@ Your exact structure may differ slightly, but the project is organized roughly a
 │   └── requirements.txt
 ├── docker-compose.yaml   # Local stack (Postgres, Airflow, etc.)
 ├── .env                  # Local environment variables (NOT committed)
-├── .env.example          # Example env file (safe to commit)
+├── .env.example          # Example env file
 ├── requirements-airflow.txt
 ├── requirements-pipeline.txt
 └── README.md

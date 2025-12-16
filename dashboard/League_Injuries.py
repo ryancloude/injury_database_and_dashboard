@@ -9,7 +9,7 @@ st.set_page_config(page_title="League Injuries", layout="wide")
 # ----------------- Connections & caching -----------------
 @st.cache_resource
 def get_engine():
-    dsn = os.getenv("READONLY_PG_DSN") or st.secrets.get("READONLY_PG_DSN")
+    dsn = os.getenv("LOCAL_READONLY_PG_DSN") or st.secrets.get("READONLY_PG_DSN")
     if not dsn:
         st.stop()
     return create_engine(dsn, pool_pre_ping=True)
@@ -253,7 +253,8 @@ injury_types_all      = _unique_union(df_view, "injury_type", "second_injury_typ
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 
 with c1:
-    all_positions = st.checkbox("All positions", value=True, key="league_all_positions")
+    if st.button("All positions", use_container_width=True):
+        st.session_state["league_pos_sel"] = positions_all
     pos_sel = st.multiselect(
         "Position(s)",
         positions_all,
@@ -262,7 +263,8 @@ with c1:
     )
 
 with c2:
-    all_seasons = st.checkbox("All seasons", value=True, key="league_all_seasons")
+    if st.button("All seasons", use_container_width=True):
+        st.session_state["league_season_sel"] = seasons_all
     season_sel = st.multiselect(
         "Season(s)",
         seasons_all,
@@ -271,7 +273,8 @@ with c2:
     )
 
 with c3:
-    all_teams = st.checkbox("All teams", value=True, key="league_all_teams")
+    if st.button("All teams", use_container_width=True):
+        st.session_state["league_team_sel"] = teams_all
     team_sel = st.multiselect(
         "Team(s)",
         teams_all,
@@ -280,7 +283,8 @@ with c3:
     )
 
 with c4:
-    all_body_part_groups = st.checkbox("All body part groups", value=True, key="league_all_bpg")
+    if st.button("All body part groups", use_container_width=True):
+        st.session_state["league_bpg_sel"] = body_part_groups_all
     bpg_sel = st.multiselect(
         "Body Part Group (incl. secondary)",
         body_part_groups_all,
@@ -289,7 +293,8 @@ with c4:
     )
 
 with c5:
-    all_body_parts = st.checkbox("All body parts", value=True, key="league_all_body_parts")
+    if st.button("All body parts", use_container_width=True):
+        st.session_state["league_bp_sel"] = body_parts_all
     bp_sel = st.multiselect(
         "Body Part (incl. secondary)",
         body_parts_all,
@@ -298,7 +303,8 @@ with c5:
     )
 
 with c6:
-    all_injury_types = st.checkbox("All injury types", value=True, key="league_all_injury_types")
+    if st.button("All injury types", use_container_width=True):
+        st.session_state["league_it_sel"] = injury_types_all
     it_sel = st.multiselect(
         "Injury Type (incl. secondary)",
         injury_types_all,
@@ -308,37 +314,37 @@ with c6:
 
 mask = pd.Series(True, index=df_view.index)
 
-# Positions
-pos_active = positions_all if all_positions or not pos_sel else pos_sel
+# Positions: empty selection = all positions
+pos_active = pos_sel or positions_all
 if positions_all and pos_active and len(pos_active) != len(positions_all):
     mask &= df_view["position"].astype(str).isin(pos_active)
 
-# Seasons
-season_active = seasons_all if all_seasons or not season_sel else season_sel
+# Seasons: empty selection = all seasons
+season_active = season_sel or seasons_all
 if seasons_all and season_active and len(season_active) != len(seasons_all):
     mask &= df_view["season"].isin(season_active)
 
-# Teams
-team_active = teams_all if all_teams or not team_sel else team_sel
+# Teams: empty selection = all teams
+team_active = team_sel or teams_all
 if teams_all and team_active and len(team_active) != len(teams_all):
     mask &= df_view["team"].isin(team_active)
 
-# Body part group
-bpg_active = body_part_groups_all if all_body_part_groups or not bpg_sel else bpg_sel
+# Body part group: empty selection = all groups
+bpg_active = bpg_sel or body_part_groups_all
 if body_part_groups_all and len(bpg_active) != len(body_part_groups_all):
     m1 = df_view["body_part_group"].astype(str).isin(bpg_active) if "body_part_group" in df_view else False
     m2 = df_view["second_body_part_group"].astype(str).isin(bpg_active) if "second_body_part_group" in df_view else False
     mask &= (m1 | m2)
 
-# Body parts
-bp_active = body_parts_all if all_body_parts or not bp_sel else bp_sel
+# Body parts: empty selection = all parts
+bp_active = bp_sel or body_parts_all
 if body_parts_all and len(bp_active) != len(body_parts_all):
     m1 = df_view["body_part"].astype(str).isin(bp_active) if "body_part" in df_view else False
     m2 = df_view["second_body_part"].astype(str).isin(bp_active) if "second_body_part" in df_view else False
     mask &= (m1 | m2)
 
-# Injury types
-it_active = injury_types_all if all_injury_types or not it_sel else it_sel
+# Injury types: empty selection = all types
+it_active = it_sel or injury_types_all
 if injury_types_all and len(it_active) != len(injury_types_all):
     m1 = df_view["injury_type"].astype(str).isin(it_active) if "injury_type" in df_view else False
     m2 = df_view["second_injury_type"].astype(str).isin(it_active) if "second_injury_type" in df_view else False
