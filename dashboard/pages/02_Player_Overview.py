@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st # type: ignore
 from sqlalchemy import create_engine, text
 import plotly.express as px # type: ignore
-st.set_page_config(page_title="Player Injuries", layout="wide")
+st.set_page_config(page_title="Player Overview", layout="wide")
 
 # ----------------- Connections & caching -----------------
 @st.cache_resource
@@ -83,7 +83,7 @@ def color_current(val: bool):
     return "background-color: #d1f7c4; color: #0a0;" if val else "background-color: #ffd6d6; color: #a00;"
 
 # ----------------- Page UI -----------------
-st.title("Player Injuries")
+st.title("Player Overview")
 
 players = list_players()
 if not players:
