@@ -5,7 +5,7 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 import plotly.express as px
 
-st.set_page_config(page_title="Team Injuries", layout="wide")
+st.set_page_config(page_title="Team Overview", layout="wide")
 
 # ----------------- Connections & caching -----------------
 @st.cache_resource
@@ -68,6 +68,99 @@ def load_team_injuries(team: str, season: int) -> pd.DataFrame:
     if "games_missed" in df.columns:
         df["games_missed"] = pd.to_numeric(df["games_missed"], errors="coerce").fillna(0).astype(int)
     return df
+# ----------------- Helpers ---------------------------
+def ensure_checklist_initialized(key_prefix: str, options: list, default_selected: list | None = None):
+    default_selected = options if default_selected is None else default_selected
+
+    needs_init = (
+        f"{key_prefix}__initialized" not in st.session_state
+        or st.session_state.get(f"{key_prefix}__len") != len(options)
+        or (len(options) > 0 and f"{key_prefix}__opt_0" not in st.session_state)
+    )
+
+    if needs_init:
+        _reset_checklist_state(key_prefix, options, default_selected)
+
+    st.session_state[f"{key_prefix}__len"] = len(options)
+
+
+def _reset_checklist_state(key_prefix: str, options: list, default_selected: list | None = None):
+    default_selected = options if default_selected is None else default_selected
+    default_set = set(default_selected)
+
+    for i, opt in enumerate(options):
+        st.session_state[f"{key_prefix}__opt_{i}"] = (opt in default_set)
+
+    st.session_state[f"{key_prefix}__search"] = ""
+    st.session_state[f"{key_prefix}__initialized"] = True
+    st.session_state[f"{key_prefix}__cleared"] = False
+
+
+def popover_multicheck(
+    label: str,
+    options: list,
+    key_prefix: str,
+    default_selected: list | None = None,
+    help: str | None = None,
+    n_cols: int = 2,
+    max_visible: int = 120,
+    list_height: int = 240,
+):
+    default_selected = options if default_selected is None else default_selected
+    init_key = f"{key_prefix}__initialized"
+
+    if init_key not in st.session_state:
+        _reset_checklist_state(key_prefix, options, default_selected)
+
+    # If options length changed since last run, re-init defaults
+    len_key = f"{key_prefix}__len"
+    if st.session_state.get(len_key) != len(options):
+        _reset_checklist_state(key_prefix, options, default_selected)
+    st.session_state[len_key] = len(options)
+
+    selected_count = sum(
+        1 for i in range(len(options)) if st.session_state.get(f"{key_prefix}__opt_{i}", False)
+    )
+
+    with st.popover(f"{label} ({selected_count})", help=help):
+        q = st.text_input("Search", key=f"{key_prefix}__search")
+        q_lower = q.strip().lower()
+
+        filtered = (
+            [opt for opt in options if q_lower in str(opt).lower()]
+            if q_lower
+            else list(options)
+        )
+
+        if len(filtered) > max_visible:
+            st.info(f"Showing first {max_visible} of {len(filtered)}. Use Search to narrow.")
+            filtered = filtered[:max_visible]
+
+        with st.container(height=list_height):
+            cols = st.columns(n_cols)
+            opt_to_index = {opt: i for i, opt in enumerate(options)}
+
+            for j, opt in enumerate(filtered):
+                i = opt_to_index[opt]
+                with cols[j % n_cols]:
+                    st.checkbox(str(opt), key=f"{key_prefix}__opt_{i}")
+
+        st.divider()
+
+        c1, c2 = st.columns(2)
+        if c1.button("Select all", use_container_width=True, key=f"{key_prefix}__btn_all"):
+            for i in range(len(options)):
+                st.session_state[f"{key_prefix}__opt_{i}"] = True
+            st.session_state[f"{key_prefix}__cleared"] = False
+
+        if c2.button("Clear all", use_container_width=True, key=f"{key_prefix}__btn_clear"):
+            for i in range(len(options)):
+                st.session_state[f"{key_prefix}__opt_{i}"] = False
+            st.session_state[f"{key_prefix}__cleared"] = True
+
+    return [opt for i, opt in enumerate(options) if st.session_state.get(f"{key_prefix}__opt_{i}", False)]
+
+
 
 # ----------------- Helpers for chart -----------------
 def stacked_bar_by_player(
@@ -231,7 +324,7 @@ def to_bool(x):
     return s in {"t","true","1","yes","y"}
 
 # ----------------- UI controls -----------------
-st.title("Team Injuries")
+st.title("Team Overview")
 
 teams = list_teams()
 if not teams:
@@ -274,57 +367,85 @@ positions_all    = sorted(df_view["position"].dropna().astype(str).str.strip().u
 body_parts_all   = _unique_union(df_view, "body_part", "second_body_part")
 injury_types_all = _unique_union(df_view, "injury_type", "second_injury_type")
 
-c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
+ensure_checklist_initialized("ti_pos", positions_all, positions_all)
+ensure_checklist_initialized("ti_bp", body_parts_all, body_parts_all)
+ensure_checklist_initialized("ti_it", injury_types_all, injury_types_all)
 
-with c1:
-    pos_sel = st.multiselect("Position", positions_all, default=positions_all)
+with st.sidebar:
+    st.header("Filters")
 
-with c2:
-    # One-shot reset button instead of toggle checkbox
-    if st.button("Select all body parts", use_container_width=True):
-        st.session_state["team_bp_sel"] = body_parts_all
-    bp_sel = st.multiselect(
+    if st.button("Reset filters", use_container_width=True):
+        _reset_checklist_state("ti_pos", positions_all, positions_all)
+        _reset_checklist_state("ti_bp", body_parts_all, body_parts_all)
+        _reset_checklist_state("ti_it", injury_types_all, injury_types_all)
+
+    pos_sel = popover_multicheck(
+        "Position(s)",
+        positions_all,
+        key_prefix="ti_pos",
+        default_selected=positions_all,
+        n_cols=1,
+        max_visible=40,
+    )
+
+    # Body parts is usually long -> 2 cols + scroll
+    bp_sel = popover_multicheck(
         "Body Part (incl. secondary)",
         body_parts_all,
-        default=body_parts_all,
-        key="team_bp_sel",
+        key_prefix="ti_bp",
+        default_selected=body_parts_all,
+        n_cols=2,
+        max_visible=120,
+        list_height=220,
     )
 
-with c3:
-    # One-shot reset button instead of toggle checkbox
-    if st.button("Select all injury types", use_container_width=True):
-        st.session_state["team_it_sel"] = injury_types_all
-    it_sel = st.multiselect(
+    it_sel = popover_multicheck(
         "Injury Type (incl. secondary)",
         injury_types_all,
-        default=injury_types_all,
-        key="team_it_sel",
+        key_prefix="ti_it",
+        default_selected=injury_types_all,
+        n_cols=2,
+        max_visible=120,
+        list_height=220,
     )
 
-with c4:
     curr_choice = st.selectbox("Currently Injured", ["Any", "Yes", "No"], index=0)
 
 # Build one mask and reuse it
 mask = pd.Series(True, index=df_view.index)
 
-# Position (unchanged)
-if positions_all and len(pos_sel) != len(positions_all) and "position" in df_view:
-    mask &= df_view["position"].astype(str).isin(pos_sel)
+# Positions
+pos_cleared = st.session_state.get("ti_pos__cleared", False)
+if positions_all:
+    if len(pos_sel) == 0:
+        if pos_cleared:
+            mask &= False
+    elif len(pos_sel) != len(positions_all):
+        mask &= df_view["position"].astype(str).isin(pos_sel)
 
-# Body parts: if nothing selected, treat as "all"
-bp_active = bp_sel or body_parts_all
-if body_parts_all and len(bp_active) != len(body_parts_all):
-    m1 = df_view["body_part"].astype(str).isin(bp_active) if "body_part" in df_view else False
-    m2 = df_view["second_body_part"].astype(str).isin(bp_active) if "second_body_part" in df_view else False
-    mask &= (m1 | m2)
+# Body parts (incl secondary)
+bp_cleared = st.session_state.get("ti_bp__cleared", False)
+if body_parts_all:
+    if len(bp_sel) == 0:
+        if bp_cleared:
+            mask &= False
+    elif len(bp_sel) != len(body_parts_all):
+        m1 = df_view["body_part"].astype(str).isin(bp_sel) if "body_part" in df_view else False
+        m2 = df_view["second_body_part"].astype(str).isin(bp_sel) if "second_body_part" in df_view else False
+        mask &= (m1 | m2)
 
-# Injury types: if nothing selected, treat as "all"
-it_active = it_sel or injury_types_all
-if injury_types_all and len(it_active) != len(injury_types_all):
-    m1 = df_view["injury_type"].astype(str).isin(it_active) if "injury_type" in df_view else False
-    m2 = df_view["second_injury_type"].astype(str).isin(it_active) if "second_injury_type" in df_view else False
-    mask &= (m1 | m2)
+# Injury types (incl secondary)
+it_cleared = st.session_state.get("ti_it__cleared", False)
+if injury_types_all:
+    if len(it_sel) == 0:
+        if it_cleared:
+            mask &= False
+    elif len(it_sel) != len(injury_types_all):
+        m1 = df_view["injury_type"].astype(str).isin(it_sel) if "injury_type" in df_view else False
+        m2 = df_view["second_injury_type"].astype(str).isin(it_sel) if "second_injury_type" in df_view else False
+        mask &= (m1 | m2)
 
+# Currently injured toggle
 if "currently_injured" in df_view.columns and curr_choice in ("Yes", "No"):
     mask &= df_view["currently_injured"].eq(curr_choice == "Yes")
 
