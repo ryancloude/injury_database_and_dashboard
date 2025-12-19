@@ -4,7 +4,7 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 import plotly.express as px
 
-st.set_page_config(page_title="League Injuries", layout="wide")
+st.set_page_config(page_title="League Overview", layout="wide")
 
 # ----------------- Connections & caching -----------------
 @st.cache_resource
@@ -42,6 +42,103 @@ def load_league_injuries() -> pd.DataFrame:
     return df
 
 # ----------------- Helpers -----------------
+def ensure_checklist_initialized(key_prefix: str, options: list, default_selected: list | None = None):
+    """
+    Make sure the per-option checkbox keys exist.
+    This prevents returning to the page with 'empty' selections because keys are missing.
+    """
+    default_selected = options if default_selected is None else default_selected
+
+    needs_init = (
+        f"{key_prefix}__initialized" not in st.session_state
+        or st.session_state.get(f"{key_prefix}__len") != len(options)
+        or (len(options) > 0 and f"{key_prefix}__opt_0" not in st.session_state)
+    )
+
+    if needs_init:
+        _reset_checklist_state(key_prefix, options, default_selected)
+
+    st.session_state[f"{key_prefix}__len"] = len(options)
+
+
+def _reset_checklist_state(key_prefix: str, options: list, default_selected: list | None = None):
+    default_selected = options if default_selected is None else default_selected
+    default_set = set(default_selected)
+
+    for i, opt in enumerate(options):
+        st.session_state[f"{key_prefix}__opt_{i}"] = (opt in default_set)
+
+    st.session_state[f"{key_prefix}__search"] = ""
+    st.session_state[f"{key_prefix}__initialized"] = True
+    st.session_state[f"{key_prefix}__cleared"] = False
+
+
+def popover_multicheck(
+    label: str,
+    options: list,
+    key_prefix: str,
+    default_selected: list | None = None,
+    help: str | None = None,
+    n_cols: int = 2,
+    max_visible: int = 120,
+    list_height: int = 240,  # <-- controls popover height pressure
+):
+    default_selected = options if default_selected is None else default_selected
+    init_key = f"{key_prefix}__initialized"
+
+    if init_key not in st.session_state:
+        _reset_checklist_state(key_prefix, options, default_selected)
+
+    # If options length changed since last run, re-init defaults
+    len_key = f"{key_prefix}__len"
+    if st.session_state.get(len_key) != len(options):
+        _reset_checklist_state(key_prefix, options, default_selected)
+    st.session_state[len_key] = len(options)
+
+    selected_count = sum(
+        1 for i in range(len(options)) if st.session_state.get(f"{key_prefix}__opt_{i}", False)
+    )
+
+    with st.popover(f"{label} ({selected_count})", help=help):
+        # Search first (usually still visible), but the key controls will be at the bottom
+        q = st.text_input("Search", key=f"{key_prefix}__search")
+        q_lower = q.strip().lower()
+
+        filtered = (
+            [opt for opt in options if q_lower in str(opt).lower()]
+            if q_lower
+            else list(options)
+        )
+
+        if len(filtered) > max_visible:
+            st.info(f"Showing first {max_visible} of {len(filtered)}. Use Search to narrow.")
+            filtered = filtered[:max_visible]
+
+        # Scrollable list so the popover never needs to be huge
+        with st.container(height=list_height):
+            cols = st.columns(n_cols)
+            opt_to_index = {opt: i for i, opt in enumerate(options)}  # stable keys
+
+            for j, opt in enumerate(filtered):
+                i = opt_to_index[opt]
+                with cols[j % n_cols]:
+                    st.checkbox(str(opt), key=f"{key_prefix}__opt_{i}")
+
+        st.divider()
+
+        c1, c2 = st.columns(2)
+        if c1.button("Select all", use_container_width=True, key=f"{key_prefix}__btn_all"):
+            for i in range(len(options)):
+                st.session_state[f"{key_prefix}__opt_{i}"] = True
+            st.session_state[f"{key_prefix}__cleared"] = False
+
+        if c2.button("Clear all", use_container_width=True, key=f"{key_prefix}__btn_clear"):
+            for i in range(len(options)):
+                st.session_state[f"{key_prefix}__opt_{i}"] = False
+            st.session_state[f"{key_prefix}__cleared"] = True
+
+    return [opt for i, opt in enumerate(options) if st.session_state.get(f"{key_prefix}__opt_{i}", False)]
+
 def _unique_union(df, a: str, b: str) -> list[str]:
     s1 = df[a] if a in df else pd.Series([], dtype=object)
     s2 = df[b] if b in df else pd.Series([], dtype=object)
@@ -95,7 +192,7 @@ def league_bar(
     inj_df: pd.DataFrame,
     x_dim: str = "team",
     color_dim: str = "season",
-    metric: str = "games_missed",
+    metric: str = "injured_salary",
 ):
     if inj_df.empty:
         return None
@@ -222,7 +319,7 @@ def color_current(val: bool):
     return "background-color: #d1f7c4; color: #0a0;" if val else "background-color: #ffd6d6; color: #a00;"
 
 # ----------------- Page UI -----------------
-st.title("League Injuries")
+st.title("League Overview")
 
 inj = load_league_injuries()
 if inj.empty:
@@ -245,110 +342,167 @@ seasons_all = sorted(df_view["season"].dropna().astype(int).unique().tolist()) i
 positions_all = sorted(df_view["position"].dropna().astype(str).str.strip().unique().tolist()) if "position" in df_view else []
 
 body_parts_all        = _unique_union(df_view, "body_part", "second_body_part")
-body_part_groups_all  = _unique_union(df_view, "body_part_group", "second_body_part_group")
+body_part_groups_all = (
+    sorted(df_view["body_part_group"].dropna().astype(str).str.strip().unique().tolist())
+    if "body_part_group" in df_view else []
+)
 injury_types_all      = _unique_union(df_view, "injury_type", "second_injury_type")
 
-# ----------------- Filters -----------------
-# ----------------- Filters -----------------
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+ensure_checklist_initialized("league_team", teams_all, teams_all)
+ensure_checklist_initialized("league_bpg", body_part_groups_all, body_part_groups_all)
+ensure_checklist_initialized("league_season", seasons_all, seasons_all)
+ensure_checklist_initialized("league_pos", positions_all, positions_all)
+ensure_checklist_initialized("league_bp", body_parts_all, body_parts_all)
+ensure_checklist_initialized("league_it", injury_types_all, injury_types_all)
 
-with c1:
-    if st.button("All positions", use_container_width=True):
-        st.session_state["league_pos_sel"] = positions_all
-    pos_sel = st.multiselect(
-        "Position(s)",
-        positions_all,
-        default=positions_all,
-        key="league_pos_sel",
+# ----------------- Filters (Sidebar) -----------------
+with st.sidebar:
+    st.header("Filters")
+
+    if st.button("Reset filters", use_container_width=True):
+        _reset_checklist_state("league_team", teams_all, teams_all)
+        _reset_checklist_state("league_bpg", body_part_groups_all, body_part_groups_all)
+        _reset_checklist_state("league_bp", body_parts_all, body_parts_all)
+        _reset_checklist_state("league_it", injury_types_all, injury_types_all)
+        _reset_checklist_state("league_season", seasons_all, seasons_all)
+        _reset_checklist_state("league_pos", positions_all, positions_all)
+
+    team_sel = popover_multicheck(
+    "Team(s)",
+    teams_all,
+    key_prefix="league_team",
+    default_selected=teams_all,
+    help="Select one or more teams.",
+    n_cols=3,
+    max_visible=60,
+    list_height=150,
+)
+
+    bpg_sel = popover_multicheck(
+        "Body Part Group",
+        body_part_groups_all,
+        key_prefix="league_bpg",
+        default_selected=body_part_groups_all,
+        help="Matches primary body part group.",
+        n_cols=2,
+        max_visible=120,
     )
 
-with c2:
-    if st.button("All seasons", use_container_width=True):
-        st.session_state["league_season_sel"] = seasons_all
-    season_sel = st.multiselect(
+    # Smaller lists can go lower without causing popover clipping
+    season_sel = popover_multicheck(
         "Season(s)",
         seasons_all,
-        default=seasons_all,
-        key="league_season_sel",
+        key_prefix="league_season",
+        default_selected=seasons_all,
+        help="Select one or more seasons.",
+        n_cols=1,
+        max_visible=40,
     )
 
-with c3:
-    if st.button("All teams", use_container_width=True):
-        st.session_state["league_team_sel"] = teams_all
-    team_sel = st.multiselect(
-        "Team(s)",
-        teams_all,
-        default=teams_all,
-        key="league_team_sel",
+    pos_sel = popover_multicheck(
+        "Position(s)",
+        positions_all,
+        key_prefix="league_pos",
+        default_selected=positions_all,
+        help="Select one or more positions.",
+        n_cols=1,
+        max_visible=40,
     )
 
-with c4:
-    if st.button("All body part groups", use_container_width=True):
-        st.session_state["league_bpg_sel"] = body_part_groups_all
-    bpg_sel = st.multiselect(
-        "Body Part Group (incl. secondary)",
-        body_part_groups_all,
-        default=body_part_groups_all,
-        key="league_bpg_sel",
-    )
+    with st.expander("Advanced filters", expanded=False):
+        bp_sel = popover_multicheck(
+            "Body Part (incl. secondary)",
+            body_parts_all,
+            key_prefix="league_bp",
+            default_selected=body_parts_all,
+        )
 
-with c5:
-    if st.button("All body parts", use_container_width=True):
-        st.session_state["league_bp_sel"] = body_parts_all
-    bp_sel = st.multiselect(
-        "Body Part (incl. secondary)",
-        body_parts_all,
-        default=body_parts_all,
-        key="league_bp_sel",
-    )
-
-with c6:
-    if st.button("All injury types", use_container_width=True):
-        st.session_state["league_it_sel"] = injury_types_all
-    it_sel = st.multiselect(
-        "Injury Type (incl. secondary)",
-        injury_types_all,
-        default=injury_types_all,
-        key="league_it_sel",
-    )
+        it_sel = popover_multicheck(
+            "Injury Type (incl. secondary)",
+            injury_types_all,
+            key_prefix="league_it",
+            default_selected=injury_types_all,
+        )
 
 mask = pd.Series(True, index=df_view.index)
 
 # Positions: empty selection = all positions
 pos_active = pos_sel or positions_all
-if positions_all and pos_active and len(pos_active) != len(positions_all):
-    mask &= df_view["position"].astype(str).isin(pos_active)
+pos_cleared = st.session_state.get("league_pos__cleared", False)
+
+if positions_all:
+    if len(pos_sel) == 0:
+        if pos_cleared:
+            mask &= False
+    elif len(pos_sel) != len(positions_all):
+        mask &= df_view["position"].astype(str).isin(pos_sel)
 
 # Seasons: empty selection = all seasons
 season_active = season_sel or seasons_all
-if seasons_all and season_active and len(season_active) != len(seasons_all):
-    mask &= df_view["season"].isin(season_active)
+season_cleared = st.session_state.get("league_season__cleared", False)
+
+if seasons_all:
+    if len(season_sel) == 0:
+        if season_cleared:
+            mask &= False
+    elif len(season_sel) != len(seasons_all):
+        mask &= df_view["season"].isin(season_sel)
 
 # Teams: empty selection = all teams
 team_active = team_sel or teams_all
-if teams_all and team_active and len(team_active) != len(teams_all):
-    mask &= df_view["team"].isin(team_active)
+team_cleared = st.session_state.get("league_team__cleared", False)
+
+if teams_all:
+    if len(team_sel) == 0:
+        if team_cleared:
+            mask &= False          # user intentionally cleared -> show none
+        else:
+            pass                  # empty due to state -> treat as ALL (no filter)
+    elif len(team_sel) != len(teams_all):
+        mask &= df_view["team"].isin(team_sel)
 
 # Body part group: empty selection = all groups
 bpg_active = bpg_sel or body_part_groups_all
-if body_part_groups_all and len(bpg_active) != len(body_part_groups_all):
-    m1 = df_view["body_part_group"].astype(str).isin(bpg_active) if "body_part_group" in df_view else False
-    m2 = df_view["second_body_part_group"].astype(str).isin(bpg_active) if "second_body_part_group" in df_view else False
-    mask &= (m1 | m2)
+bpg_cleared = st.session_state.get("league_bpg__cleared", False)
+
+if body_part_groups_all:
+    if len(bpg_sel) == 0:
+        if bpg_cleared:
+            mask &= False
+        else:
+            pass  # treat empty as ALL
+    elif len(bpg_sel) != len(body_part_groups_all):
+        mask &= df_view["body_part_group"].astype(str).isin(bpg_sel)
 
 # Body parts: empty selection = all parts
 bp_active = bp_sel or body_parts_all
-if body_parts_all and len(bp_active) != len(body_parts_all):
-    m1 = df_view["body_part"].astype(str).isin(bp_active) if "body_part" in df_view else False
-    m2 = df_view["second_body_part"].astype(str).isin(bp_active) if "second_body_part" in df_view else False
-    mask &= (m1 | m2)
+bp_cleared = st.session_state.get("league_bp__cleared", False)
+
+if body_parts_all:
+    if len(bp_sel) == 0:
+        if bp_cleared:
+            mask &= False
+        else:
+            pass
+    elif len(bp_sel) != len(body_parts_all):
+        m1 = df_view["body_part"].astype(str).isin(bp_sel) if "body_part" in df_view else False
+        m2 = df_view["second_body_part"].astype(str).isin(bp_sel) if "second_body_part" in df_view else False
+        mask &= (m1 | m2)
 
 # Injury types: empty selection = all types
 it_active = it_sel or injury_types_all
-if injury_types_all and len(it_active) != len(injury_types_all):
-    m1 = df_view["injury_type"].astype(str).isin(it_active) if "injury_type" in df_view else False
-    m2 = df_view["second_injury_type"].astype(str).isin(it_active) if "second_injury_type" in df_view else False
-    mask &= (m1 | m2)
+it_cleared = st.session_state.get("league_it__cleared", False)
+
+if injury_types_all:
+    if len(it_sel) == 0:
+        if it_cleared:
+            mask &= False
+        else:
+            pass
+    elif len(it_sel) != len(injury_types_all):
+        m1 = df_view["injury_type"].astype(str).isin(it_sel) if "injury_type" in df_view else False
+        m2 = df_view["second_injury_type"].astype(str).isin(it_sel) if "second_injury_type" in df_view else False
+        mask &= (m1 | m2)
 
 inj_filtered = df_view.loc[mask].copy()
 
@@ -362,12 +516,19 @@ dim_map = {
 }
 dim_labels = list(dim_map.keys())
 
-group_label = st.radio("Group bars by", dim_labels, horizontal=True, index=0)
+group_label = st.radio(
+    "Bars grouped by (x-axis)",
+    dim_labels,
+    horizontal=True,
+    index=0,
+    help="What each bar represents along the x-axis.",
+)
 color_label = st.radio(
-    "Color bars by",
+    "Bars broken down by (stacked color)",
     dim_labels,
     horizontal=True,
     index=1 if len(dim_labels) > 1 else 0,
+    help="What the colored segments within each bar represent.",
 )
 
 group_by = dim_map[group_label]
@@ -379,11 +540,21 @@ metric_map = {
     "Injured salary": "injured_salary",
     "WAR missed": "war_missed",
 }
-metric_label = st.radio("Metric", list(metric_map.keys()), horizontal=True, index=0)
+default_metric_label = "Injured salary"
+metric_keys = list(metric_map.keys())
+default_metric_index = metric_keys.index(default_metric_label) if default_metric_label in metric_keys else 0
+
+metric_label = st.radio(
+    "Value shown",
+    metric_keys,
+    horizontal=True,
+    index=default_metric_index,
+    help="The value that gets summed for each stacked segment.",
+)
 metric = metric_map[metric_label]
 
 # ----------------- Chart + Summary -----------------
-left, right = st.columns([2, 1])
+left, right = st.columns([2, 1], vertical_alignment="top")
 with left:
     fig = league_bar(
         inj_filtered,
