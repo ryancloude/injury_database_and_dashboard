@@ -565,7 +565,7 @@ def color_current(val: bool):
 try:
     styler = (
         df_filt.style
-        .applymap(color_current, subset=["currently_injured"])
+        .map(color_current, subset=["currently_injured"])
         .background_gradient(cmap="YlOrRd", subset=metric_cols)
         .format({
             "injured_salary": lambda v: f"${v:,.2f}M",
@@ -592,7 +592,7 @@ except Exception:
 
     styler = (
         df_filt.style
-        .applymap(color_current, subset=["currently_injured"])
+        .map(color_current, subset=["currently_injured"])
         .apply(colorize_numeric, subset=metric_cols)
         .format({
             "injured_salary": lambda v: f"${v:,.2f}M",

@@ -269,7 +269,7 @@ metric_cols = [c for c in ["games_missed", "injured_salary", "war_missed"] if c 
 try:
     styler = (
         df_show.style
-        .applymap(
+        .map(
             color_current,
             subset=["currently_injured"] if "currently_injured" in df_show.columns else [],
         )
@@ -303,7 +303,7 @@ except Exception:
 
     styler = (
         df_show.style
-        .applymap(
+        .map(
             color_current,
             subset=["currently_injured"] if "currently_injured" in df_show.columns else [],
         )
