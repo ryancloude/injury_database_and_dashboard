@@ -24,7 +24,6 @@
 
 
 with src as (
-  -- Reuse staging instead of re-writing transforms
   select * from {{ ref('stg_statcast') }}
 )
 
@@ -52,7 +51,6 @@ select
    release_pos_x,
    release_pos_z,
    release_extension,
-  -- feet -> inches like your SQL (×12)
    pfx_x   * 12 as pfx_x,
    pfx_z   * 12 as pfx_z,
    plate_x * 12 as plate_x,
@@ -67,6 +65,5 @@ select
 from src
 
 {% if is_incremental() %}
-  -- Sliding window to pick up late corrections; change 14 -> 7/21/etc. as you like
   where game_date >= current_date - interval '7 day'
 {% endif %}
