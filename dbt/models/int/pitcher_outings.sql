@@ -75,7 +75,7 @@ outings as (
     and g.gametype in ('R','W','D','L')
     inner join players p 
     on p.person_id = s.pitcher
-    and p.primaryposition_code in ('1','Y')
+    and p.primaryposition_code::text in ('1', 'Y')
     where exists (select 1 from teams t where t.team_id = g.away_team_id)
     and exists (select 1 from teams t where t.team_id = g.home_team_id)
     group by s.pitcher, s.game_date, s.pitcher_team, s.game_pk
