@@ -25,6 +25,7 @@ LOCAL_PG_DSN = os.getenv("LOCAL_PG_DSN", "")
 AWS_PG_DSN = os.getenv("AWS_PG_DSN", "")
 
 LOCAL_PG_USER = os.getenv("LOCAL_PG_USER", "")
+LOCAL_PG_HOST = os.getenv("LOCAL_PG_HOST", "")
 LOCAL_PG_PASSWORD = os.getenv("LOCAL_PG_PASSWORD", "")
 AWS_PG_HOST = os.getenv("AWS_PG_HOST", "")
 AWS_PG_USER = os.getenv("AWS_PG_USER", "")
@@ -56,6 +57,7 @@ def _dbt_env() -> dict[str, str]:
     env = _base_env().copy()
     env.update(
         {
+            "LOCAL_PG_HOST": LOCAL_PG_HOST,
             "LOCAL_PG_USER": LOCAL_PG_USER,
             "LOCAL_PG_PASSWORD": LOCAL_PG_PASSWORD,
             "AWS_PG_HOST": AWS_PG_HOST,

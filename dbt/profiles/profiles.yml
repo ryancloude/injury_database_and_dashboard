@@ -5,13 +5,14 @@ mlb:                           # <-- matches dbt_project.yml: profile: "mlb"
     # -------- LOCAL: Docker Postgres --------
     local:
       type: postgres
-      host: db                 # Docker service name, like you had before
+      host: "{{ env_var('LOCAL_PG_HOST') }}"                 # Docker service name, like you had before
       user: "{{ env_var('LOCAL_PG_USER') }}"
       password: "{{ env_var('LOCAL_PG_PASSWORD') }}"
       port: 5432
       dbname: baseball
       schema: analytics        # or whatever schema you want as default
       threads: 4
+      sslmode: require
 
     # -------- AWS: RDS Postgres --------
     aws:
@@ -23,3 +24,4 @@ mlb:                           # <-- matches dbt_project.yml: profile: "mlb"
       dbname: baseball
       schema: analytics
       threads: 4
+      sslmode: require
