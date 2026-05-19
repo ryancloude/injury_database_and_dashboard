@@ -98,9 +98,7 @@ def check_for_player_app(injury, player_app):
         DataFrame returned by :func:`get_activations` containing placement and
         activation details.
     player_app : pandas.DataFrame
-        Appearance-level data, typically from Statcast, with ``game_date`` and
-        ``team_id`` columns. The module expects this to be loaded globally as
-        ``player_app`` when run as a script.
+        Appearance-level data with ``game_date`` and ``team_id`` columns.
 
     Returns
     -------
@@ -108,8 +106,27 @@ def check_for_player_app(injury, player_app):
         The injury table where any appearance that happens before the
         transactional activation overrides the return information.
     """
-    injury = injury.sort_values(["il_place_date"]).reset_index(drop=True)
-    player_app = player_app.sort_values(["game_date"]).reset_index(drop=True)
+    injury = injury.copy()
+    player_app = player_app.copy()
+
+    injury["person_id"] = pd.to_numeric(injury["person_id"], errors="coerce")
+    player_app["person_id"] = pd.to_numeric(player_app["person_id"], errors="coerce")
+
+    injury["il_place_date"] = pd.to_datetime(injury["il_place_date"], errors="coerce")
+    player_app["game_date"] = pd.to_datetime(player_app["game_date"], errors="coerce")
+
+    injury = injury.dropna(subset=["person_id", "il_place_date"]).reset_index(drop=True)
+    player_app = player_app.dropna(subset=["person_id", "game_date"]).reset_index(drop=True)
+
+    injury["person_id"] = injury["person_id"].astype("int64")
+    player_app["person_id"] = player_app["person_id"].astype("int64")
+
+    injury["il_place_date"] = injury["il_place_date"].astype("datetime64[ns]")
+    player_app["game_date"] = player_app["game_date"].astype("datetime64[ns]")
+
+    injury = injury.sort_values(["il_place_date", "person_id"]).reset_index(drop=True)
+    player_app = player_app.sort_values(["game_date", "person_id"]).reset_index(drop=True)
+
     # Look for the first appearance at or after the IL placement; if it occurs
     # before the transactional activation we treat that appearance date/team as
     # the true return.
@@ -123,7 +140,8 @@ def check_for_player_app(injury, player_app):
         direction="forward",
         allow_exact_matches=False,
     )
-    return_before_trans_mask = injury.game_date < injury.return_date
+
+    return_before_trans_mask = injury["game_date"] < injury["return_date"]
     injury.loc[return_before_trans_mask, "return_team_id"] = injury.loc[
         return_before_trans_mask, "team_id"
     ]
@@ -412,10 +430,19 @@ if __name__ == "__main__":
     transactions = pd.read_sql(transactions_query, engine)
     season_dates_query = "select * from silver.season_dates;"
     season_dates = pd.read_sql(season_dates_query, engine)
-    player_apperance_query = """select DISTINCT pitcher as person_id, game_date, pitcher_team as team_id
-    from silver.statcast
-    UNION
-    select distinct batter as person_id, game_date, batter_team as team_id
-    from silver.statcast;"""
+    player_apperance_query = """
+    select person_id, game_date, team_id
+    from silver.player_appearances;
+    """
     player_app = pd.read_sql(player_apperance_query, engine)
+    player_app["game_date"] = pd.to_datetime(player_app["game_date"], errors="coerce")
+    player_app["person_id"] = pd.to_numeric(player_app["person_id"], errors="coerce")
+    player_app["team_id"] = pd.to_numeric(player_app["team_id"], errors="coerce")
+
+    il_placements["person_id"] = pd.to_numeric(il_placements["person_id"], errors="coerce")
+    transactions["person_id"] = pd.to_numeric(transactions["person_id"], errors="coerce")
+    player_app = player_app.dropna(subset=["person_id", "game_date"])
+    player_app["person_id"] = player_app["person_id"].astype("int64")
+    il_placements["person_id"] = il_placements["person_id"].astype("int64")
+    transactions["person_id"] = transactions["person_id"].astype("int64")
     create_silver_injury_spans(il_placements, transactions, season_dates, teams, player_app, engine)
